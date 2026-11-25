@@ -31,17 +31,17 @@ object FeatureExplanations {
         when (topic) {
             FeatureHelpTopic.HOME_DASHBOARD -> FeatureExplanation(
                 title = "الشاشة الرئيسية",
-                whatItIs = "لوحة تحكم هادئة تعرض وضعك الحالي وحالة الهاتف المحاكاة والأتمتة في مكان واحد.",
-                problemSolved = "تمنع التشتت وتجمع أهم ما تحتاجه دون إغراقك بتفاصيل معقدة.",
-                howToUse = "بدّل الوضع أو الصوت المحاكى أو استخدم الإجراءات السريعة الثلاثة بلمسة واحدة.",
-                whatHappens = "يتحدث الوضع الحالي وحالة المحاكاة فوراً ويُسجّل التغيير في سجل النشاط."
+                whatItIs = "نقطة بداية بسيطة تعرض فكرة التطبيق وثلاث بطاقات رئيسية: المساعد، روتيناتي، وجهات الطوارئ مع أحدث 3 أحداث.",
+                problemSolved = "تمنع التشتت وتوصلك لأهم الميزات بلمسة واحدة.",
+                howToUse = "اختر أي بطاقة لفتح المساعد الذكي أو إدارة الروتينات أو جهات الطوارئ.",
+                whatHappens = "تنتقل مباشرة إلى الأداة المطلوبة مع عرض أحدث 3 أحداث في الأسفل."
             )
             FeatureHelpTopic.SMART_PROFILES -> FeatureExplanation(
                 title = "الأوضاع الذكية",
                 whatItIs = "مجموعات إعدادات جاهزة (مثل الدراسة والعمل والنوم) تحدد الصوت والتنبيهات المسموحة.",
                 problemSolved = "تغنيك عن تعديل الصوت واستثناءات الإشعارات يدوياً في كل مرة.",
                 howToUse = "اختر أي وضع لتفعيله فوراً أو أنشئ وضعاً مخصصاً يناسب يومك.",
-                whatHappens = "يُطبّق الوضع الصوتي المحاكى وتُحدَّث قواعد السماح لجهات الأولوية."
+                whatHappens = "يُطبّق الوضع الصوتي المحاكى وتُحدَّث قواعد السماح لجهات الطوارئ."
             )
             FeatureHelpTopic.PHONE_STATUS -> FeatureExplanation(
                 title = "حالة الهاتف المحاكاة",
@@ -52,10 +52,10 @@ object FeatureExplanations {
             )
             FeatureHelpTopic.ROUTINES -> FeatureExplanation(
                 title = "الروتين الذكي",
-                whatItIs = "قواعد تلقائية تربط بين وقت أو سياق معين وإجراءات محددة لهاتفك المحاكى.",
+                whatItIs = "قواعد تلقائية تربط بين وقت أو يوم أو دخول/مغادرة مكان وإجراءات لهاتفك المحاكى، مع الأوضاع الذكية والتركيز.",
                 problemSolved = "تضمن انتقال الهاتف للوضع المناسب تلقائياً دون أن تنسى تفعيله.",
-                howToUse = "فعّل الروتين أو عطّله، ابحث في القواعد، أو اضغط إضافة روتين لبناء قاعدة جديدة.",
-                whatHappens = "عند تحقق المشغّل والشروط تُنفَّذ الإجراءات مع احترام الاستثناءات والأولوية."
+                howToUse = "بدّل الوضع الذكي أو ابدأ جلسة تركيز أو فعّل وأضف روتينات جديدة.",
+                whatHappens = "عند تحقق المشغّل والشروط تُنفَّذ الإجراءات مع استثناء جهات الطوارئ دائماً."
             )
             FeatureHelpTopic.RULE_BUILDER -> FeatureExplanation(
                 title = "منشئ الروتين التفاعلي",
@@ -68,15 +68,15 @@ object FeatureExplanations {
                 title = "المساعد الذكي المحلي",
                 whatItIs = "مساعد محادثة يعمل محلياً لفهم أوامرك بالعربية أو الإنجليزية واقتراح روتينات.",
                 problemSolved = "يوفر وقت إعداد القواعد يدوياً ويشرح لك سبب تغيّر حالة الهاتف.",
-                howToUse = "اختر أمراً مقترحاً أو اكتب طلبك، ثم راجع المعاينة وأكّدها قبل الحفظ.",
-                whatHappens = "ينشئ المساعد مسودة روتين منظمة أو يبدأ جلسة تركيز أو يعرض نشاطك اليومي."
+                howToUse = "اكتب ما تريده بلغة بسيطة، ثم اضغط موافقة أو تعديل أو رفض على بطاقة التأكيد.",
+                whatHappens = "لا يتم حفظ أي روتين إلا بعد موافقتك الصريحة."
             )
             FeatureHelpTopic.CONTACTS -> FeatureExplanation(
-                title = "جهات الأولوية",
-                whatItIs = "تصنيف تجريبي لجهات الاتصال إلى طوارئ، أولوية عالية، وعادي.",
-                problemSolved = "يمنع تفويت المكالمات العائلية أو العاجلة أثناء الوضع الصامت.",
-                howToUse = "راجع التصنيفات، عدّل أولوية أي جهة، أو اختبر مكالمة/رسالة محاكاة.",
-                whatHappens = "تتجاوز جهات الطوارئ الكتم دائماً، بينما تخضع الأولوية العالية لإعدادات الوضع."
+                title = "جهات الطوارئ",
+                whatItIs = "قائمة المتصلين المختارين الذين لا يتأثرون بأي روتين أو وضع صامت إطلاقاً.",
+                problemSolved = "تضمن وصول المكالمات العاجلة من العائلة أو الفريق حتى أثناء الدراسة أو النوم.",
+                howToUse = "أضف جهات الطوارئ أو عدّل مستواها أو اختبر مكالمة/رسالة محاكاة.",
+                whatHappens = "تتجاوز جهات الطوارئ أي روتين وأي وضع كتم دائماً."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(
                 title = "التحليلات والمؤشرات",
@@ -138,18 +138,18 @@ object FeatureExplanations {
     } else {
         when (topic) {
             FeatureHelpTopic.HOME_DASHBOARD -> FeatureExplanation(
-                title = "Home Dashboard",
-                whatItIs = "A calm overview of your active profile, simulated phone mode, and automation state.",
-                problemSolved = "Eliminates clutter by surfacing only the controls and metrics you need at a glance.",
-                howToUse = "Switch profiles, adjust simulated sound, or tap one of the 3 quick actions.",
-                whatHappens = "Updates your demo state immediately and logs the change in Activity History."
+                title = "Home",
+                whatItIs = "A clean starting view with three core shortcuts—Assistant, My routines, and Emergency contacts—plus your latest 3 events.",
+                problemSolved = "Keeps daily navigation effortless without overwhelming you with controls.",
+                howToUse = "Tap any of the three cards to create a rule, inspect routines, or manage emergency callers.",
+                whatHappens = "Opens the chosen feature immediately and keeps recent activity visible at a glance."
             )
             FeatureHelpTopic.SMART_PROFILES -> FeatureExplanation(
                 title = "Smart Profiles",
                 whatItIs = "Preset modes (Study, Work, Sleep, Personal) defining sound and interruption rules.",
                 problemSolved = "Saves you from toggling sound and contact exceptions manually every time you switch tasks.",
                 howToUse = "Tap Activate on any profile, edit its allowed categories, or create a custom profile.",
-                whatHappens = "Applies the profile's simulated sound mode and updates priority contact filtering."
+                whatHappens = "Applies the profile's simulated sound mode and updates emergency contact filtering."
             )
             FeatureHelpTopic.PHONE_STATUS -> FeatureExplanation(
                 title = "Simulated Phone Status",
@@ -160,10 +160,10 @@ object FeatureExplanations {
             )
             FeatureHelpTopic.ROUTINES -> FeatureExplanation(
                 title = "Smart Routines",
-                whatItIs = "Automated rules connecting a time or context trigger to simulated phone actions.",
+                whatItIs = "Automatic actions triggered by time, day of week, or entering/leaving a place, together with Smart Profiles and Focus Sessions.",
                 problemSolved = "Keeps your phone aligned with your daily schedule automatically.",
-                howToUse = "Toggle routines on/off, search or filter by status, or tap Add Routine for guided setup.",
-                whatHappens = "When a trigger matches and conditions pass, actions execute while honoring exceptions."
+                howToUse = "Switch profiles, launch a quick focus timer, toggle routines, or add a new rule.",
+                whatHappens = "When a trigger matches and conditions pass, actions execute while emergency callers always get through."
             )
             FeatureHelpTopic.RULE_BUILDER -> FeatureExplanation(
                 title = "Guided Routine Builder",
@@ -174,17 +174,17 @@ object FeatureExplanations {
             )
             FeatureHelpTopic.ASSISTANT -> FeatureExplanation(
                 title = "Smart Assistant",
-                whatItIs = "An offline bilingual assistant that turns plain requests into structured routines or summaries.",
-                problemSolved = "Speeds up routine setup and answers why your simulated phone mode changed.",
-                howToUse = "Tap a suggestion or type a command, then confirm, edit, or cancel any proposed rule.",
-                whatHappens = "Nothing is saved without your explicit confirmation."
+                whatItIs = "An offline bilingual assistant that turns plain-language requests into structured routines.",
+                problemSolved = "Speeds up routine setup without navigating manual rule forms.",
+                howToUse = "Type what you want or tap a suggestion, then choose Approve, Edit, or Reject on the confirmation card.",
+                whatHappens = "Nothing is saved without your explicit approval."
             )
             FeatureHelpTopic.CONTACTS -> FeatureExplanation(
-                title = "Priority Contacts",
-                whatItIs = "Demo contact tiers (Emergency, High Priority, Normal) for interruption filtering.",
-                problemSolved = "Prevents missing urgent calls from family or teammates while staying focused.",
-                howToUse = "Review each priority tier, edit contact permissions, or expand the interruption tester.",
-                whatHappens = "Emergency contacts bypass Silent mode; High Priority and Normal follow profile rules."
+                title = "Emergency Contacts",
+                whatItIs = "Chosen callers who are never affected by any routine, even in Silent mode.",
+                problemSolved = "Prevents missing urgent calls from family or teammates while routines silence distractions.",
+                howToUse = "Add emergency callers, review contact tiers, or expand the interruption tester.",
+                whatHappens = "Emergency contacts always get through every routine and quiet profile."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(
                 title = "Insights",

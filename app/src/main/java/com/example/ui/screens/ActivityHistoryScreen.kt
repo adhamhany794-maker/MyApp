@@ -60,7 +60,8 @@ import com.example.viewmodels.SmartCompanionViewModel
 fun ActivityHistoryScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    viewModel: SmartCompanionViewModel
+    viewModel: SmartCompanionViewModel,
+    showHeader: Boolean = true
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<EventCategory?>(null) }
@@ -93,12 +94,34 @@ fun ActivityHistoryScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ScreenIntroHeader(
-                    title = strings.screenHistory,
-                    subtitle = strings.historySubtitle,
-                    strings = strings,
-                    onInfoClick = { showHelp = true },
-                    trailingContent = {
+                if (showHeader) {
+                    ScreenIntroHeader(
+                        title = strings.screenHistory,
+                        subtitle = strings.historySubtitle,
+                        strings = strings,
+                        onInfoClick = { showHelp = true },
+                        trailingContent = {
+                            IconButton(
+                                onClick = { showClearConfirm = true },
+                                modifier = Modifier.testTag("clear_history_button")
+                            ) {
+                                Icon(Icons.Rounded.DeleteSweep, contentDescription = strings.clearHistoryBtn)
+                            }
+                        }
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        strings.historyLegend,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!showHeader) {
                         IconButton(
                             onClick = { showClearConfirm = true },
                             modifier = Modifier.testTag("clear_history_button")
@@ -106,12 +129,7 @@ fun ActivityHistoryScreen(
                             Icon(Icons.Rounded.DeleteSweep, contentDescription = strings.clearHistoryBtn)
                         }
                     }
-                )
-                Text(
-                    strings.historyLegend,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+                }
             }
         }
 

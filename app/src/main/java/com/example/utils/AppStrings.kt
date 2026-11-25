@@ -33,6 +33,7 @@ abstract class AppStrings {
     abstract val navRoutines: String
     abstract val navContacts: String
     abstract val navInsights: String
+    abstract val navSettings: String
     abstract val screenProfiles: String
     abstract val screenFocus: String
     abstract val screenContext: String
@@ -43,6 +44,8 @@ abstract class AppStrings {
     abstract val screenPlayground: String
     abstract val screenRuleBuilder: String
     abstract val screenSimulation: String
+    abstract val screenActivity: String
+    abstract val screenAdvanced: String
     abstract val screenMore: String
     abstract val openMenuDesc: String
     abstract val backDesc: String
@@ -79,6 +82,8 @@ abstract class AppStrings {
     abstract val back: String
     abstract val enterDemoMode: String
     abstract val confirm: String
+    abstract val approveBtn: String
+    abstract val rejectBtn: String
     abstract val cancel: String
     abstract val edit: String
     abstract val delete: String
@@ -97,6 +102,23 @@ abstract class AppStrings {
     abstract val moreModules: String
     abstract val showAllModules: String
     abstract val hideModules: String
+
+    // Simplified Home Product Idea & Cards
+    abstract val homeHeadline: String
+    abstract val homeSubtitle: String
+    abstract val homeCardAssistantTitle: String
+    abstract val homeCardAssistantSub: String
+    abstract val homeCardRoutinesTitle: String
+    abstract val homeCardContactsTitle: String
+    abstract val homeCardContactsSubSuffix: String
+    abstract val manageProfilesBtn: String
+    abstract val activitySubtitle: String
+    abstract val advancedSubtitle: String
+    abstract val settingsSubtitle: String
+    abstract val settingsMoreTitle: String
+    abstract val descActivityMerged: String
+    abstract val descAdvanced: String
+    abstract val descEmergencyContacts: String
 
     // Dashboard
     abstract val activeProfile: String
@@ -605,18 +627,21 @@ private object EnglishAppStrings : AppStrings() {
     override val navHome = "Home"
     override val navAssistant = "Assistant"
     override val navRoutines = "Routines"
-    override val navContacts = "Contacts"
+    override val navContacts = "Emergency contacts"
     override val navInsights = "Insights"
+    override val navSettings = "Settings"
     override val screenProfiles = "Smart Profiles"
     override val screenFocus = "Focus Sessions"
     override val screenContext = "Context Awareness"
-    override val screenNotifications = "Notification Intelligence"
-    override val screenHistory = "Activity History"
-    override val screenSafety = "Safety & Recovery"
+    override val screenNotifications = "Notifications"
+    override val screenHistory = "History"
+    override val screenSafety = "Safety"
     override val screenSettings = "Settings"
     override val screenPlayground = "Demo Playground"
     override val screenRuleBuilder = "Create Routine"
     override val screenSimulation = "Simulation Engine"
+    override val screenActivity = "Activity"
+    override val screenAdvanced = "Advanced"
     override val screenMore = "More"
     override val openMenuDesc = "Open More menu"
     override val backDesc = "Go back"
@@ -647,6 +672,8 @@ private object EnglishAppStrings : AppStrings() {
     override val back = "Back"
     override val enterDemoMode = "Enter Demo Mode"
     override val confirm = "Confirm"
+    override val approveBtn = "Approve"
+    override val rejectBtn = "Reject"
     override val cancel = "Cancel"
     override val edit = "Edit"
     override val delete = "Delete"
@@ -665,6 +692,21 @@ private object EnglishAppStrings : AppStrings() {
     override val moreModules = "Explore Modules"
     override val showAllModules = "Show all tools"
     override val hideModules = "Hide tools"
+    override val homeHeadline = "Your phone adapts to your day."
+    override val homeSubtitle = "Set a rule once, like 'silent while I study 8 to 10', and Smart Companion handles calls and notifications for you. Emergency contacts always get through."
+    override val homeCardAssistantTitle = "Tell the assistant what you want"
+    override val homeCardAssistantSub = "Describe a routine in plain language and review it before saving."
+    override val homeCardRoutinesTitle = "My routines"
+    override val homeCardContactsTitle = "Emergency contacts"
+    override val homeCardContactsSubSuffix = "chosen callers never silenced by any routine"
+    override val manageProfilesBtn = "Manage profiles"
+    override val activitySubtitle = "Insights, event timeline, and notification analytics in one place."
+    override val advancedSubtitle = "Simulated context signals, interactive demo scenarios, and rule engine."
+    override val settingsSubtitle = "Safety controls, emergency contacts, activity, language, and advanced tools."
+    override val settingsMoreTitle = "More"
+    override val descActivityMerged = "Insights, activity history, and notification intelligence."
+    override val descAdvanced = "Context Awareness, Demo Playground, and Simulation Engine."
+    override val descEmergencyContacts = "Manage callers who always get through any routine."
     override val activeProfile = "Current Profile"
     override val switchProfilePrompt = "Switch profile:"
     override val simulatedPhoneStatus = "Phone Status"
@@ -728,11 +770,9 @@ private object EnglishAppStrings : AppStrings() {
     override val interruptionChartExplain = "7-day simulated alerts grouped by category and peak hours."
     override val profileChartExplain = "Combined profile usage from routine runs, focus blocks, and active selection."
     override val onboardingPages = listOf(
-        Triple("Smart Profiles", "Choose modes like Study, Work, Sleep, or Personal to adapt simulated sound and filtering in one tap.", "Only one profile is active at a time."),
-        Triple("Smart Routines", "Automate profile switches using clear WHEN, CONDITIONS, ACTIONS, and EXCEPTIONS rules.", "Built-in priority & conflict safeguards."),
-        Triple("Priority Contacts", "Silence noisy apps while letting family, advisors, or emergency callers reach you anytime.", "Test simulated calls & messages safely."),
-        Triple("Focus Sessions", "Protect deep work with a countdown timer that tracks elapsed focus and blocked distractions.", "Updates your daily focus insights automatically."),
-        Triple("Smart Assistant", "Describe a routine in plain English or Arabic and review the proposal before confirming.", "100% offline demo — no account needed.")
+        Triple("Automatic Routines", "Set a rule once by time, day of week, or entering/leaving a place — your phone adapts automatically.", "Smart profiles & focus tools built in."),
+        Triple("Emergency Contacts Always Get Through", "Chosen emergency callers are never affected by any routine, even in Silent mode.", "Your safety net stays active 24/7."),
+        Triple("AI Assistant", "Type what you want in plain language and get a routine card to Approve, Edit, or Reject.", "Nothing activates without your approval.")
     )
     override val profilesSubtitle = "Each profile controls simulated sound mode, allowed alert categories, and priority exceptions."
     override val defaultBadge = "DEFAULT"
@@ -797,7 +837,7 @@ private object EnglishAppStrings : AppStrings() {
     override val simTraceExceptions = "Exceptions Checked"
     override val simTraceActions = "Actions Selected"
     override val simTraceFinal = "Final Simulated Result"
-    override val contactsSubtitle = "Synthetic demo contacts — never accesses your real phone contacts."
+    override val contactsSubtitle = "Emergency callers are never silenced by any routine (synthetic demo)."
     override val interruptionTesterTitle = "Incoming Interruption Tester"
     override val repeatCallerLabel = "Simulate repeat caller (2nd call in 3m)"
     override val testCallBtn = "Test Call"
@@ -831,7 +871,7 @@ private object EnglishAppStrings : AppStrings() {
     override val noMatchingContextRoutines = "No routines match this exact simulated context snapshot."
     override val testContextBtn = "Test Context Automation Decision"
     override val assistantHeaderTitle = "Smart Assistant"
-    override val assistantHeaderSub = "Local offline demo assistant (English & Arabic)"
+    override val assistantHeaderSub = "Type what you want — Approve, Edit, or Reject a routine."
     override val assistantEmptyGuide = "I can build routines from plain language, start a focus session, or summarize your daily simulated activity. Every generated rule asks for your confirmation before saving."
     override val assistantInputHint = "Ask or describe a routine..."
     override val assistantThinking = "Analyzing request with local state..."
@@ -931,18 +971,21 @@ private object ArabicAppStrings : AppStrings() {
     override val navHome = "الرئيسية"
     override val navAssistant = "المساعد"
     override val navRoutines = "الروتين"
-    override val navContacts = "الأولوية"
+    override val navContacts = "جهات الطوارئ"
     override val navInsights = "التحليلات"
+    override val navSettings = "الإعدادات"
     override val screenProfiles = "الأوضاع الذكية"
     override val screenFocus = "جلسات التركيز"
     override val screenContext = "الوعي بالسياق"
-    override val screenNotifications = "ذكاء الإشعارات"
-    override val screenHistory = "سجل النشاط"
-    override val screenSafety = "الأمان والاسترداد"
+    override val screenNotifications = "الإشعارات"
+    override val screenHistory = "السجل"
+    override val screenSafety = "الأمان"
     override val screenSettings = "الإعدادات"
-    override val screenPlayground = "ساحة السيناريوهات"
+    override val screenPlayground = "ساحة التجارب"
     override val screenRuleBuilder = "إنشاء روتين"
     override val screenSimulation = "محرك المحاكاة"
+    override val screenActivity = "النشاط"
+    override val screenAdvanced = "إعدادات متقدمة"
     override val screenMore = "المزيد"
     override val openMenuDesc = "فتح قائمة المزيد"
     override val backDesc = "رجوع"
@@ -973,6 +1016,8 @@ private object ArabicAppStrings : AppStrings() {
     override val back = "السابق"
     override val enterDemoMode = "بدء الوضع التجريبي"
     override val confirm = "تأكيد"
+    override val approveBtn = "موافقة"
+    override val rejectBtn = "رفض"
     override val cancel = "إلغاء"
     override val edit = "تعديل"
     override val delete = "حذف"
@@ -991,6 +1036,21 @@ private object ArabicAppStrings : AppStrings() {
     override val moreModules = "استكشاف الأدوات"
     override val showAllModules = "عرض جميع الأدوات"
     override val hideModules = "إخفاء الأدوات"
+    override val homeHeadline = "هاتفك يتكيّف مع يومك."
+    override val homeSubtitle = "اضبط القاعدة مرة واحدة، مثل 'صامت أثناء الدراسة من 8 إلى 10'، وسيتولى المرافق الذكي المكالمات والإشعارات نيابةً عنك. جهات الطوارئ تصلك دائماً."
+    override val homeCardAssistantTitle = "أخبر المساعد بما تريد"
+    override val homeCardAssistantSub = "اكتب ما تريده بلغة بسيطة وراجع المقترح قبل الحفظ."
+    override val homeCardRoutinesTitle = "روتيناتي"
+    override val homeCardContactsTitle = "جهات الطوارئ"
+    override val homeCardContactsSubSuffix = "جهات اتصال لا تتأثر بأي روتين أو كتم"
+    override val manageProfilesBtn = "إدارة الأوضاع"
+    override val activitySubtitle = "التحليلات وسجل النشاط وذكاء الإشعارات في شاشة واحدة."
+    override val advancedSubtitle = "الوعي بالسياق وساحة التجارب ومحرك المحاكاة."
+    override val settingsSubtitle = "ضوابط الأمان، جهات الطوارئ، النشاط، اللغة، والأدوات المتقدمة."
+    override val settingsMoreTitle = "المزيد"
+    override val descActivityMerged = "التحليلات وسجل النشاط وذكاء الإشعارات."
+    override val descAdvanced = "الوعي بالسياق وساحة التجارب ومحرك المحاكاة."
+    override val descEmergencyContacts = "إدارة الأشخاص الذين يصلونك دائماً رغم أي روتين."
     override val activeProfile = "الوضع الحالي"
     override val switchProfilePrompt = "تبديل الوضع:"
     override val simulatedPhoneStatus = "حالة الهاتف"
@@ -1054,11 +1114,9 @@ private object ArabicAppStrings : AppStrings() {
     override val interruptionChartExplain = "تنبيهات محاكاة خلال 7 أيام مصنفة حسب الفئة ووقت الذروة."
     override val profileChartExplain = "الاستخدام الإجمالي للأوضاع من الروتينات وجلسات التركيز والتفعيل الحالي."
     override val onboardingPages = listOf(
-        Triple("الأوضاع الذكية", "اختر أوضاعاً مثل الدراسة أو العمل أو النوم لتعديل الصوت المحاكى وتصفية التنبيهات بلمسة واحدة.", "وضع واحد فقط يكون نشطاً في كل مرة."),
-        Triple("الروتين الذكي", "أتمت تبديل الأوضاع باستخدام قواعد واضحة: متى ← الشروط ← الإجراءات ← الاستثناءات.", "حماية مدمجة ضد تعارض القواعد."),
-        Triple("جهات الأولوية", "اكتم التطبيقات المزعجة مع السماح للعائلة أو جهات الطوارئ بالوصول إليك دائماً.", "اختبر المكالمات والرسائل المحاكاة بأمان."),
-        Triple("جلسات التركيز", "احمِ وقت تركيزك بمؤقت يحسب الوقت المنقضي والمتبقي والمقاطعات المحجوبة.", "يحدّث إحصائيات التركيز والتحليلات تلقائياً."),
-        Triple("المساعد الذكي", "اكتب طلبك بالعربية أو الإنجليزية وراجع مقترح الروتين قبل تأكيده.", "عرض محلي بالكامل بدون إنترنت أو حساب.")
+        Triple("روتينات تلقائية", "اضبط القاعدة مرة واحدة حسب الوقت أو اليوم أو دخول/مغادرة مكان، وسيتكيّف هاتفك تلقائياً.", "تشمل الأوضاع الذكية وجلسات التركيز."),
+        Triple("جهات الطوارئ تصلك دائماً", "الأشخاص الذين تختارهم للطوارئ لا يتأثرون بأي روتين أو وضع صامت إطلاقاً.", "أمانك متاح في كل الأوقات."),
+        Triple("المساعد الذكي", "اكتب ما تريده بلغة بسيطة، فيحوّله المساعد إلى روتين مع خيارات موافقة أو تعديل أو رفض.", "لا يتم حفظ أي قاعدة إلا بموافقتك.")
     )
     override val profilesSubtitle = "يحدد كل وضع نمط الصوت المحاكى، فئات الإشعارات المسموحة، واستثناءات جهات الاتصال."
     override val defaultBadge = "افتراضي"
@@ -1123,7 +1181,7 @@ private object ArabicAppStrings : AppStrings() {
     override val simTraceExceptions = "الاستثناءات المطبّقة"
     override val simTraceActions = "الإجراءات المختارة"
     override val simTraceFinal = "النتيجة النهائية المحاكاة"
-    override val contactsSubtitle = "جهات اتصال تجريبية — لا يصل التطبيق إلى جهات اتصالك الحقيقية."
+    override val contactsSubtitle = "جهات الطوارئ لا تتأثر بأي روتين أو وضع صامت (جهات تجريبية)."
     override val interruptionTesterTitle = "اختبار المقاطعات الواردة"
     override val repeatCallerLabel = "محاكاة متصل متكرر (مكالمة ثانية خلال 3 دقائق)"
     override val testCallBtn = "اختبار مكالمة"
@@ -1157,7 +1215,7 @@ private object ArabicAppStrings : AppStrings() {
     override val noMatchingContextRoutines = "لا توجد روتينات مطابقة تماماً لهذه اللقطة الزمنية والسياقية."
     override val testContextBtn = "اختبار قرار الأتمتة للسياق"
     override val assistantHeaderTitle = "المساعد الذكي"
-    override val assistantHeaderSub = "مساعد تجريبي محلي بدون إنترنت (العربية والإنجليزية)"
+    override val assistantHeaderSub = "اكتب ما تريده — وافق على الروتين أو عدّله أو ارفضه."
     override val assistantEmptyGuide = "يمكنني إنشاء روتينات ذكية من أوامرك، بدء جلسة تركيز، أو عرض نشاطك اليومي المحاكى. سأطلب تأكيدك قبل حفظ أي روتين."
     override val assistantInputHint = "اكتب سؤالك أو صِف الروتين المطلوب..."
     override val assistantThinking = "جاري تحليل الطلب وفق الحالة الحالية..."

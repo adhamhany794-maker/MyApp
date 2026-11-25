@@ -228,7 +228,7 @@ fun AssistantScreen(
                                             },
                                             modifier = Modifier.testTag("assistant_confirm_btn")
                                         ) {
-                                            Text(strings.confirm)
+                                            Text(strings.approveBtn)
                                         }
                                         OutlinedButton(
                                             onClick = {
@@ -243,7 +243,7 @@ fun AssistantScreen(
                                             onClick = { viewModel.cancelAssistantProposal(msg.id) },
                                             modifier = Modifier.testTag("assistant_cancel_btn")
                                         ) {
-                                            Text(strings.cancel)
+                                            Text(strings.rejectBtn)
                                         }
                                     }
                                 } else if (msg.proposalStatusNote != null) {

@@ -55,7 +55,8 @@ import kotlin.math.roundToInt
 fun ContextAwarenessScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    viewModel: SmartCompanionViewModel
+    viewModel: SmartCompanionViewModel,
+    showHeader: Boolean = true
 ) {
     val ctx = state.preferences.simulatedContext
     var customLoc by remember(ctx.customLocationName) { mutableStateOf(ctx.customLocationName) }
@@ -80,14 +81,16 @@ fun ContextAwarenessScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ScreenIntroHeader(
-                title = strings.screenContext,
-                subtitle = strings.contextSubtitle,
-                strings = strings,
-                onInfoClick = { showHelp = true },
-                showSimulatedBadge = true
-            )
+        if (showHeader) {
+            item {
+                ScreenIntroHeader(
+                    title = strings.screenContext,
+                    subtitle = strings.contextSubtitle,
+                    strings = strings,
+                    onInfoClick = { showHelp = true },
+                    showSimulatedBadge = true
+                )
+            }
         }
 
         // Current Context Summary

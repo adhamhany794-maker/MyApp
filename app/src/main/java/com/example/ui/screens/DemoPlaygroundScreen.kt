@@ -49,7 +49,8 @@ private data class DemoScenarioMeta(
 fun DemoPlaygroundScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    viewModel: SmartCompanionViewModel
+    viewModel: SmartCompanionViewModel,
+    showHeader: Boolean = true
 ) {
     var showHelp by remember { mutableStateOf(false) }
     val scenarios = if (strings.isArabic) {
@@ -137,14 +138,16 @@ fun DemoPlaygroundScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            ScreenIntroHeader(
-                title = strings.screenPlayground,
-                subtitle = strings.playgroundSubtitle,
-                strings = strings,
-                onInfoClick = { showHelp = true },
-                showSimulatedBadge = true
-            )
+        if (showHeader) {
+            item {
+                ScreenIntroHeader(
+                    title = strings.screenPlayground,
+                    subtitle = strings.playgroundSubtitle,
+                    strings = strings,
+                    onInfoClick = { showHelp = true },
+                    showSimulatedBadge = true
+                )
+            }
         }
 
         state.demoScenarioResult?.let { res ->

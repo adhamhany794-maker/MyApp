@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,8 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -37,11 +41,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,7 +58,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.models.SmartRoutine
@@ -60,7 +68,9 @@ import com.example.ui.components.ActiveStatusPill
 import com.example.ui.components.CompanionCard
 import com.example.ui.components.ConfirmActionDialog
 import com.example.ui.components.FeatureExplanationDialog
+import com.example.ui.components.ProfileIconBadge
 import com.example.ui.components.ScreenIntroHeader
+import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.StatusAmber
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
@@ -79,7 +89,9 @@ fun RoutinesScreen(
     viewModel: SmartCompanionViewModel,
     onCreateRoutine: () -> Unit,
     onEditRoutine: (String) -> Unit,
-    onOpenSimulationEngine: () -> Unit
+    onOpenSimulationEngine: () -> Unit,
+    onOpenProfiles: () -> Unit,
+    onOpenFocusSessions: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf(RoutineStatusFilter.ALL) }
@@ -87,6 +99,7 @@ fun RoutinesScreen(
     var deletingRoutine by remember { mutableStateOf<SmartRoutine?>(null) }
     var showHelp by remember { mutableStateOf(false) }
 
+    val activeProfile = state.activeProfile
     val filteredRoutines = remember(state.routines, searchQuery, statusFilter, strings) {
         val q = searchQuery.trim().lowercase()
         state.routines.filter { routine ->
@@ -103,7 +116,9 @@ fun RoutinesScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("routines_list"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -121,6 +136,214 @@ fun RoutinesScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = StatusAmber
                 )
+            }
+        }
+
+        // Focus Sessions Quick Action (merged into Routines)
+        item {
+            if (state.activeFocus.isActive) {
+                val activeFocusProfileName = state.profiles
+                    .firstOrNull { it.id == state.activeFocus.profileId }
+                    ?.let { strings.localizedProfileName(it) }
+                    ?: state.activeFocus.profileName
+                Surface(
+                    onClick = onOpenFocusSessions,
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("routines_focus_quick_card")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Timer,
+                                contentDescription = strings.screenFocus,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Column {
+                                Text(
+                                    text = if (state.activeFocus.isPaused) {
+                                        "${strings.activeFocusBannerPaused} • $activeFocusProfileName"
+                                    } else {
+                                        "${strings.activeFocusBannerRunning} • $activeFocusProfileName"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "${state.activeFocus.simulatedInterruptionsBlocked} ${strings.distractionsBlockedSuffix}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = TimeUtils.formatTimer(state.activeFocus.remainingSeconds),
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFamily),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            } else {
+                CompanionCard(modifier = Modifier.testTag("routines_focus_quick_card")) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Timer,
+                                contentDescription = strings.screenFocus,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Column {
+                                Text(strings.screenFocus, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = strings.descFocusSessions,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                val targetProfile = state.profiles.firstOrNull { it.id == "profile_study" }
+                                    ?: state.activeProfile
+                                    ?: state.profiles.firstOrNull()
+                                targetProfile?.let {
+                                    viewModel.startFocusSession(25, it, true)
+                                }
+                            },
+                            modifier = Modifier.testTag("routines_quick_start_focus_btn")
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.startFocus25m)
+                        }
+                        OutlinedButton(
+                            onClick = onOpenFocusSessions,
+                            modifier = Modifier.testTag("routines_open_focus_btn")
+                        ) {
+                            Text(strings.openTimer)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Smart Profiles Section (merged into Routines)
+        item {
+            CompanionCard(modifier = Modifier.testTag("routines_smart_profiles_section")) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = strings.screenProfiles,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(strings.screenProfiles, style = MaterialTheme.typography.titleSmall)
+                    }
+                    TextButton(
+                        onClick = onOpenProfiles,
+                        modifier = Modifier.testTag("routines_manage_profiles_btn")
+                    ) {
+                        Text(strings.manageProfilesBtn)
+                    }
+                }
+
+                if (activeProfile != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        ProfileIconBadge(
+                            iconKey = activeProfile.iconKey,
+                            accentHex = activeProfile.accentColorHex,
+                            size = 40.dp
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${strings.localizedProfileName(activeProfile)} • ${strings.soundModeLabel(activeProfile.soundMode)}",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = strings.localizedProfileDescription(activeProfile),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        state.profiles.forEach { profile ->
+                            val selected = profile.id == activeProfile.id
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.activateProfile(profile, "Routines Profile Switcher") },
+                                label = {
+                                    Text(
+                                        text = strings.localizedProfileName(profile),
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(profile.accentColorHex).copy(alpha = 0.2f),
+                                    selectedLabelColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = selected,
+                                    borderColor = MaterialTheme.colorScheme.outlineVariant,
+                                    selectedBorderColor = Color(profile.accentColorHex)
+                                ),
+                                modifier = Modifier.testTag("switch_profile_${profile.id}")
+                            )
+                        }
+                    }
+                }
             }
         }
 

@@ -1,14 +1,13 @@
 package com.example.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.Contacts
-import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
@@ -47,21 +46,16 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ui.components.ConflictResolutionDialog
 import com.example.ui.navigation.NavRoutes
-import com.example.ui.screens.ActivityHistoryScreen
+import com.example.ui.screens.ActivityScreen
+import com.example.ui.screens.AdvancedScreen
 import com.example.ui.screens.AssistantScreen
 import com.example.ui.screens.ContactsScreen
-import com.example.ui.screens.ContextAwarenessScreen
-import com.example.ui.screens.DemoPlaygroundScreen
 import com.example.ui.screens.FocusSessionsScreen
 import com.example.ui.screens.HomeDashboardScreen
-import com.example.ui.screens.InsightsScreen
-import com.example.ui.screens.MoreScreen
-import com.example.ui.screens.NotificationIntelligenceScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfilesScreen
 import com.example.ui.screens.RoutinesScreen
 import com.example.ui.screens.RuleBuilderScreen
-import com.example.ui.screens.SafetyCenterScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SimulationEngineScreen
 import com.example.ui.theme.SmartCompanionTheme
@@ -116,14 +110,12 @@ fun SmartCompanionApp(
             }
         }
 
-        // Strict 5 primary bottom navigation items in exact order:
-        // Home -> Routines -> Assistant -> Contacts -> Insights
+        // Strictly 4 primary bottom navigation tabs: Home, Routines, Assistant, Settings
         val mainTabs = listOf(
             BottomNavTab(NavRoutes.HOME, strings.navHome, Icons.Rounded.Home),
             BottomNavTab(NavRoutes.ROUTINES, strings.navRoutines, Icons.Rounded.Schedule),
             BottomNavTab(NavRoutes.ASSISTANT, strings.navAssistant, Icons.Rounded.AutoAwesome),
-            BottomNavTab(NavRoutes.CONTACTS, strings.navContacts, Icons.Rounded.Contacts),
-            BottomNavTab(NavRoutes.INSIGHTS, strings.navInsights, Icons.Rounded.BarChart)
+            BottomNavTab(NavRoutes.SETTINGS, strings.navSettings, Icons.Rounded.Settings)
         )
         val mainRouteSet = mainTabs.map { it.route }.toSet()
         val isMainTab = currentRoute in mainRouteSet
@@ -144,17 +136,12 @@ fun SmartCompanionApp(
             currentRoute == NavRoutes.HOME -> strings.appName
             currentRoute == NavRoutes.ROUTINES -> strings.navRoutines
             currentRoute == NavRoutes.ASSISTANT -> strings.navAssistant
+            currentRoute == NavRoutes.SETTINGS -> strings.navSettings
             currentRoute == NavRoutes.CONTACTS -> strings.navContacts
-            currentRoute == NavRoutes.INSIGHTS -> strings.navInsights
-            currentRoute == NavRoutes.MORE -> strings.screenMore
+            currentRoute == NavRoutes.ACTIVITY -> strings.screenActivity
+            currentRoute == NavRoutes.ADVANCED -> strings.screenAdvanced
             currentRoute == NavRoutes.PROFILES -> strings.screenProfiles
             currentRoute == NavRoutes.FOCUS -> strings.screenFocus
-            currentRoute == NavRoutes.CONTEXT -> strings.screenContext
-            currentRoute == NavRoutes.NOTIFICATIONS -> strings.screenNotifications
-            currentRoute == NavRoutes.HISTORY -> strings.screenHistory
-            currentRoute == NavRoutes.SAFETY -> strings.screenSafety
-            currentRoute == NavRoutes.SETTINGS -> strings.screenSettings
-            currentRoute == NavRoutes.PLAYGROUND -> strings.screenPlayground
             currentRoute == NavRoutes.SIMULATION -> strings.screenSimulation
             currentRoute.startsWith(NavRoutes.RULE_BUILDER) -> strings.screenRuleBuilder
             else -> strings.appName
@@ -186,30 +173,6 @@ fun SmartCompanionApp(
                             }
                         }
                     },
-                    actions = {
-                        if (currentRoute != NavRoutes.SETTINGS) {
-                            IconButton(
-                                onClick = { navigateTo(NavRoutes.SETTINGS) },
-                                modifier = Modifier.testTag("top_settings_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Settings,
-                                    contentDescription = strings.screenSettings
-                                )
-                            }
-                        }
-                        if (currentRoute != NavRoutes.MORE) {
-                            IconButton(
-                                onClick = { navigateTo(NavRoutes.MORE) },
-                                modifier = Modifier.testTag("open_more_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.GridView,
-                                    contentDescription = strings.openMenuDesc
-                                )
-                            }
-                        }
-                    },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
                     )
@@ -219,7 +182,8 @@ fun SmartCompanionApp(
                 if (isMainTab) {
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 0.dp
+                        tonalElevation = 0.dp,
+                        windowInsets = WindowInsets.navigationBars
                     ) {
                         mainTabs.forEach { tab ->
                             val selected = currentRoute == tab.route
@@ -275,7 +239,9 @@ fun SmartCompanionApp(
                             navigateTo(NavRoutes.ruleBuilderRoute())
                         },
                         onEditRoutine = { id -> navigateTo(NavRoutes.ruleBuilderRoute(id)) },
-                        onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) }
+                        onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) },
+                        onOpenProfiles = { navigateTo(NavRoutes.PROFILES) },
+                        onOpenFocusSessions = { navigateTo(NavRoutes.FOCUS) }
                     )
                 }
                 composable(NavRoutes.ASSISTANT) {
@@ -286,45 +252,28 @@ fun SmartCompanionApp(
                         onEditProposalInBuilder = { navigateTo(NavRoutes.ruleBuilderRoute()) }
                     )
                 }
+                composable(NavRoutes.SETTINGS) {
+                    SettingsScreen(
+                        state = state,
+                        strings = strings,
+                        viewModel = viewModel,
+                        onNavigate = { route -> navigateTo(route) }
+                    )
+                }
                 composable(NavRoutes.CONTACTS) {
                     ContactsScreen(state = state, strings = strings, viewModel = viewModel)
                 }
-                composable(NavRoutes.INSIGHTS) {
-                    InsightsScreen(
-                        state = state,
-                        strings = strings,
-                        onOpenNotificationsModule = { navigateTo(NavRoutes.NOTIFICATIONS) }
-                    )
+                composable(NavRoutes.ACTIVITY) {
+                    ActivityScreen(state = state, strings = strings, viewModel = viewModel)
                 }
-                composable(NavRoutes.MORE) {
-                    MoreScreen(
-                        strings = strings,
-                        onNavigate = { route -> navigateTo(route) }
-                    )
+                composable(NavRoutes.ADVANCED) {
+                    AdvancedScreen(state = state, strings = strings, viewModel = viewModel)
                 }
                 composable(NavRoutes.PROFILES) {
                     ProfilesScreen(state = state, strings = strings, viewModel = viewModel)
                 }
                 composable(NavRoutes.FOCUS) {
                     FocusSessionsScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.CONTEXT) {
-                    ContextAwarenessScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.NOTIFICATIONS) {
-                    NotificationIntelligenceScreen(state = state, strings = strings)
-                }
-                composable(NavRoutes.HISTORY) {
-                    ActivityHistoryScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.SAFETY) {
-                    SafetyCenterScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.SETTINGS) {
-                    SettingsScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.PLAYGROUND) {
-                    DemoPlaygroundScreen(state = state, strings = strings, viewModel = viewModel)
                 }
                 composable(NavRoutes.SIMULATION) {
                     SimulationEngineScreen(state = state, strings = strings, viewModel = viewModel)

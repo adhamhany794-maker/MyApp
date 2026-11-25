@@ -62,7 +62,8 @@ import kotlin.math.roundToInt
 fun SimulationEngineScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    viewModel: SmartCompanionViewModel
+    viewModel: SmartCompanionViewModel,
+    showHeader: Boolean = true
 ) {
     var simHour by remember { mutableIntStateOf(state.preferences.simulatedContext.simulatedHour) }
     var simDay by remember { mutableStateOf(state.preferences.simulatedContext.simulatedDay) }
@@ -76,14 +77,16 @@ fun SimulationEngineScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ScreenIntroHeader(
-                title = strings.screenSimulation,
-                subtitle = strings.simSubtitle,
-                strings = strings,
-                onInfoClick = { showHelp = true },
-                showSimulatedBadge = true
-            )
+        if (showHeader) {
+            item {
+                ScreenIntroHeader(
+                    title = strings.screenSimulation,
+                    subtitle = strings.simSubtitle,
+                    strings = strings,
+                    onInfoClick = { showHelp = true },
+                    showSimulatedBadge = true
+                )
+            }
         }
 
         // Time & Day Trigger Simulator

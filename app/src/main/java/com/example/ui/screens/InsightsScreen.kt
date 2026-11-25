@@ -51,7 +51,8 @@ import com.example.viewmodels.SmartCompanionUiState
 fun InsightsScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    onOpenNotificationsModule: () -> Unit
+    onOpenNotificationsModule: () -> Unit,
+    showHeader: Boolean = true
 ) {
     var showHelp by remember { mutableStateOf(false) }
 
@@ -79,14 +80,16 @@ fun InsightsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ScreenIntroHeader(
-                title = strings.navInsights,
-                subtitle = strings.insightsSubtitle,
-                strings = strings,
-                onInfoClick = { showHelp = true },
-                showSimulatedBadge = true
-            )
+        if (showHeader) {
+            item {
+                ScreenIntroHeader(
+                    title = strings.navInsights,
+                    subtitle = strings.insightsSubtitle,
+                    strings = strings,
+                    onInfoClick = { showHelp = true },
+                    showSimulatedBadge = true
+                )
+            }
         }
 
         // 1. Clean 2x2 KPI Summary Grid

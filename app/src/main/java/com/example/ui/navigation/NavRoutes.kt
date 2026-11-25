@@ -2,22 +2,19 @@ package com.example.ui.navigation
 
 object NavRoutes {
     const val ONBOARDING = "onboarding"
-    const val HOME = "home"
-    const val ASSISTANT = "assistant"
-    const val ROUTINES = "routines"
-    const val CONTACTS = "contacts"
-    const val INSIGHTS = "insights"
 
-    // Secondary More Hub & Modules
-    const val MORE = "more"
+    // 4 Primary Bottom Bar Tabs
+    const val HOME = "home"
+    const val ROUTINES = "routines"
+    const val ASSISTANT = "assistant"
+    const val SETTINGS = "settings"
+
+    // Secondary Screens (all reachable within <= 2 taps)
+    const val CONTACTS = "contacts"
+    const val ACTIVITY = "activity"
+    const val ADVANCED = "advanced"
     const val PROFILES = "profiles"
     const val FOCUS = "focus"
-    const val CONTEXT = "context"
-    const val NOTIFICATIONS = "notifications"
-    const val HISTORY = "history"
-    const val SAFETY = "safety"
-    const val SETTINGS = "settings"
-    const val PLAYGROUND = "playground"
     const val SIMULATION = "simulation"
     const val RULE_BUILDER = "rule_builder"
 

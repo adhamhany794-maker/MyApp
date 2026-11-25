@@ -25,8 +25,6 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,17 +53,13 @@ fun OnboardingScreen(
     onFinishOnboarding: () -> Unit
 ) {
     val icons = listOf(
-        Icons.Rounded.Tune,
         Icons.Rounded.Schedule,
         Icons.Rounded.Contacts,
-        Icons.Rounded.Timer,
         Icons.Rounded.AutoAwesome
     )
     val accents = listOf(
-        MaterialTheme.colorScheme.primary,
         Color(0xFF0D7C7B),
         Color(0xFFD97706),
-        Color(0xFF0284C7),
         Color(0xFF4F46E5)
     )
 

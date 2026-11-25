@@ -45,7 +45,8 @@ import com.example.viewmodels.SmartCompanionUiState
 @Composable
 fun NotificationIntelligenceScreen(
     state: SmartCompanionUiState,
-    strings: AppStrings
+    strings: AppStrings,
+    showHeader: Boolean = true
 ) {
     var selectedPeriod by remember { mutableStateOf(TimePeriodFilter.TODAY) }
     var showHelp by remember { mutableStateOf(false) }
@@ -62,14 +63,16 @@ fun NotificationIntelligenceScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ScreenIntroHeader(
-                title = strings.screenNotifications,
-                subtitle = strings.notifSubtitle,
-                strings = strings,
-                onInfoClick = { showHelp = true },
-                showSimulatedBadge = true
-            )
+        if (showHeader) {
+            item {
+                ScreenIntroHeader(
+                    title = strings.screenNotifications,
+                    subtitle = strings.notifSubtitle,
+                    strings = strings,
+                    onInfoClick = { showHelp = true },
+                    showSimulatedBadge = true
+                )
+            }
         }
 
         item {
