@@ -965,8 +965,12 @@ class SmartCompanionViewModel(
         _isAssistantThinking.value = true
 
         viewModelScope.launch {
-            delay(360L)
             val state = uiState.value
+            val history = _assistantMessages.value
+                .filter { it.id != "welcome_1" }
+                .dropLast(1)
+                .takeLast(6)
+                .map { it.isUser to it.text }
             val snapshot = AssistantStateSnapshot(
                 language = state.preferences.language,
                 activeProfile = state.activeProfile ?: state.profiles.first(),
@@ -976,35 +980,18 @@ class SmartCompanionViewModel(
                 contacts = state.contacts,
                 notificationStats = state.notificationStats,
                 focusSessions = state.focusSessions,
-                recentEvents = state.activityEvents
+                recentEvents = state.activityEvents,
+                recentConversation = history
             )
             val reply = assistantEngine.processPrompt(trimmed, snapshot)
-
-            if (reply.focusMinutesToStart != null) {
-                val studyProfile = state.profiles.firstOrNull { it.id == "profile_study" } ?: state.activeProfile
-                if (studyProfile != null) {
-                    deviceActionExecutor.execute(
-                        DeviceActionCommand.ActivateProfileState(studyProfile.id, studyProfile.name, studyProfile.soundMode)
-                    )
-                    repository.savePhoneState(
-                        studyProfile.id,
-                        studyProfile.soundMode,
-                        state.preferences.isAutomationPaused
-                    )
-                    startFocusSessionInternal(
-                        minutes = reply.focusMinutesToStart,
-                        profile = studyProfile,
-                        triggerSource = "AI Assistant"
-                    )
-                }
-            }
 
             val assistantMsg = AssistantMessage(
                 id = UUID.randomUUID().toString(),
                 isUser = false,
                 text = reply.text,
                 timestampMillis = System.currentTimeMillis(),
-                proposal = reply.proposal
+                proposal = reply.proposal,
+                noticeText = reply.noticeText
             )
             _assistantMessages.update { it + assistantMsg }
             _isAssistantThinking.value = false
@@ -1376,9 +1363,9 @@ class SmartCompanionViewModel(
 
     private fun initialAssistantMessages(language: AppLanguage): List<AssistantMessage> {
         val welcome = if (language == AppLanguage.ARABIC) {
-            "مرحباً! أنا مساعد المرافق الذكي التجريبي (يعمل محلياً بدون إنترنت). يمكنني مساعدتك في إنشاء روتينات ذكية أو بدء جلسة تركيز أو تفسير حالة هاتفك المحاكاة."
+            "مرحباً! صف الروتين الذي تريده بالعربية أو الإنجليزية (مثلاً: \"اجعل هاتفي صامتاً أثناء الدراسة 8 إلى 10 مساءً واسمح لعائلتي بالاتصال\"). سأجهّز لك بطاقة روتين للموافقة أو التعديل أو الرفض."
         } else {
-            "Hello! I am your offline Smart Companion Assistant. I can build routines from plain language, start focus sessions, or explain your current simulated phone behavior using live app state."
+            "Hello! Describe any routine you want in English or Arabic (for example: \"Silence my phone while I study 8 to 10 but let my family call me\"). I'll prepare a routine card for you to Approve, Edit, or Reject."
         }
         return listOf(
             AssistantMessage(
@@ -1414,10 +1401,16 @@ class SmartCompanionViewModel(
         val isReady: Boolean
     )
 
-    class Factory(private val repository: SmartCompanionRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: SmartCompanionRepository,
+        private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine()
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SmartCompanionViewModel(repository) as T
+            return SmartCompanionViewModel(
+                repository = repository,
+                assistantEngine = assistantEngine
+            ) as T
         }
     }
 }

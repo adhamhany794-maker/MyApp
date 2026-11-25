@@ -929,12 +929,12 @@ private object EnglishAppStrings : AppStrings() {
     override val assistantHeaderSub = "Type what you want — Approve, Edit, or Reject a routine."
     override val assistantEmptyGuide = "I can build routines from plain language, start a focus session, or summarize your daily simulated activity. Every generated rule asks for your confirmation before saving."
     override val assistantInputHint = "Ask or describe a routine..."
-    override val assistantThinking = "Analyzing request with local state..."
+    override val assistantThinking = "Preparing routine with Gemini..."
     override val assistantSuggestedPrompts = listOf(
-        "Create a study routine.",
-        "Help me organize my sleep schedule.",
-        "Show my daily activity.",
-        "Start a focus session."
+        "Silence my phone while I study 8 to 10 but let my family call me",
+        "Vibrate during work hours weekdays 9 AM to 5 PM",
+        "Mute notifications when I enter the Library",
+        "Start a 45m focus routine every evening at 7 PM"
     )
     override val focusSubtitle = "Track both elapsed and remaining focus time synced with your Smart Profiles."
     override val focusPausedBadge = "SESSION PAUSED"
@@ -1303,12 +1303,12 @@ private object ArabicAppStrings : AppStrings() {
     override val assistantHeaderSub = "اكتب ما تريده — وافق على الروتين أو عدّله أو ارفضه."
     override val assistantEmptyGuide = "يمكنني إنشاء روتينات ذكية من أوامرك، بدء جلسة تركيز، أو عرض نشاطك اليومي المحاكى. سأطلب تأكيدك قبل حفظ أي روتين."
     override val assistantInputHint = "اكتب سؤالك أو صِف الروتين المطلوب..."
-    override val assistantThinking = "جاري تحليل الطلب وفق الحالة الحالية..."
+    override val assistantThinking = "جاري تجهيز الروتين عبر Gemini..."
     override val assistantSuggestedPrompts = listOf(
-        "أنشئ روتين دراسة.",
-        "ساعدني في تنظيم جدول نومي.",
-        "اعرض نشاطي اليومي.",
-        "ابدأ جلسة تركيز."
+        "اجعل هاتفي صامتاً أثناء الدراسة 8 إلى 10 مساءً واسمح لعائلتي بالاتصال",
+        "اهتزاز أثناء ساعات العمل أيام الأسبوع 9 ص إلى 5 م",
+        "كتم الإشعارات عند دخولي المكتبة",
+        "روتين تركيز 45 دقيقة كل مساء الساعة 7"
     )
     override val focusSubtitle = "تابع الوقت المنقضي والمتبقي لتركيزك مع ربط تلقائي بالأوضاع الذكية."
     override val focusPausedBadge = "الجلسة متوقفة مؤقتاً"

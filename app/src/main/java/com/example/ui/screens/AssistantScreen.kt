@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +56,7 @@ import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.FeatureInfoButton
 import com.example.ui.components.SimulatedDemoBadge
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.StatusAmber
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
@@ -174,6 +176,23 @@ fun AssistantScreen(
                         modifier = Modifier.widthIn(max = 310.dp)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
+                            val notice = msg.noticeText
+                            if (!notice.isNullOrBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .padding(bottom = 8.dp)
+                                        .testTag("assistant_offline_notice")
+                                ) {
+                                    Text(
+                                        text = notice,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = msg.text,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -213,6 +232,35 @@ fun AssistantScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        val conflictWarning = proposal.conflictWarning
+                                        if (!conflictWarning.isNullOrBlank()) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Surface(
+                                                color = StatusAmber.copy(alpha = 0.14f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("assistant_conflict_warning")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(8.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.WarningAmber,
+                                                        contentDescription = null,
+                                                        tint = StatusAmber,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Text(
+                                                        text = conflictWarning,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = StatusAmber
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 Spacer(Modifier.height(10.dp))

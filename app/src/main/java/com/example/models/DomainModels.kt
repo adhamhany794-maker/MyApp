@@ -164,7 +164,8 @@ data class RoutineProposal(
     val triggerSummary: String,
     val endTimeLabel: String,
     val actionSummary: String,
-    val exceptionSummary: String
+    val exceptionSummary: String,
+    val conflictWarning: String? = null
 )
 
 data class AssistantMessage(
@@ -174,7 +175,8 @@ data class AssistantMessage(
     val timestampMillis: Long,
     val proposal: RoutineProposal? = null,
     val proposalResolved: Boolean = false,
-    val proposalStatusNote: String? = null
+    val proposalStatusNote: String? = null,
+    val noticeText: String? = null
 )
 
 sealed interface UiState<out T> {

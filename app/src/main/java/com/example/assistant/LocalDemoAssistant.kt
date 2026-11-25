@@ -32,13 +32,15 @@ data class AssistantStateSnapshot(
     val contacts: List<PriorityContact>,
     val notificationStats: List<NotificationStat>,
     val focusSessions: List<FocusSessionRecord>,
-    val recentEvents: List<ActivityEvent>
+    val recentEvents: List<ActivityEvent>,
+    val recentConversation: List<Pair<Boolean, String>> = emptyList()
 )
 
 data class AssistantReply(
     val text: String,
     val proposal: RoutineProposal? = null,
-    val focusMinutesToStart: Int? = null
+    val focusMinutesToStart: Int? = null,
+    val noticeText: String? = null
 )
 
 /**
