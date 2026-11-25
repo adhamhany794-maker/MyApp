@@ -40,7 +40,8 @@ data class AssistantReply(
     val text: String,
     val proposal: RoutineProposal? = null,
     val focusMinutesToStart: Int? = null,
-    val noticeText: String? = null
+    val noticeText: String? = null,
+    val debugErrorLog: String? = null
 )
 
 /**

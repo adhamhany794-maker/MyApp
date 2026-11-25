@@ -4,16 +4,20 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
+import com.example.BuildConfig
 import com.example.models.AppLanguage
 import com.example.models.ExceptionType
 import com.example.models.RuleException
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "GeminiAssistantEngine"
@@ -23,7 +27,9 @@ class GeminiAssistantEngine(
     private val context: Context? = null,
     private val fallbackEngine: CompanionAssistantEngine = LocalDemoAssistantEngine(),
     private val connectivityChecker: (() -> Boolean)? = null,
-    private val modelInvoker: (suspend (String) -> String?)? = null
+    private val modelInvoker: (suspend (String) -> String?)? = null,
+    private val modelByNameInvoker: (suspend (modelName: String, prompt: String) -> String?)? = null,
+    private val retryDelayMs: Long = HIGH_DEMAND_RETRY_DELAY_MS
 ) : CompanionAssistantEngine {
 
     private val routineResponseSchema: Schema by lazy {
@@ -110,9 +116,12 @@ class GeminiAssistantEngine(
         )
     }
 
-    private val model by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
+    private val primaryModel by lazy { createGenerativeModel(PRIMARY_MODEL_NAME) }
+    private val fallbackModel by lazy { createGenerativeModel(FALLBACK_MODEL_NAME) }
+
+    private fun createGenerativeModel(modelName: String) =
+        Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
+            modelName = modelName,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = routineResponseSchema
@@ -122,7 +131,6 @@ class GeminiAssistantEngine(
                 text(SYSTEM_INSTRUCTION)
             }
         )
-    }
 
     override suspend fun processPrompt(
         prompt: String,
@@ -139,10 +147,23 @@ class GeminiAssistantEngine(
 
         return try {
             val rawJson = withTimeout(GEMINI_TIMEOUT_MS) {
-                if (modelInvoker != null) {
-                    modelInvoker.invoke(fullPrompt)
-                } else {
-                    model.generateContent(fullPrompt).text
+                try {
+                    invokeWithHighDemandRetry(PRIMARY_MODEL_NAME, fullPrompt)
+                } catch (e: TimeoutCancellationException) {
+                    throw e
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (isTransientHighDemandError(e)) {
+                        Log.w(
+                            TAG,
+                            "Primary model $PRIMARY_MODEL_NAME unavailable after $MAX_HIGH_DEMAND_RETRIES retries; falling back to $FALLBACK_MODEL_NAME",
+                            e
+                        )
+                        invokeWithHighDemandRetry(FALLBACK_MODEL_NAME, fullPrompt)
+                    } else {
+                        throw e
+                    }
                 }
             }.orEmpty()
 
@@ -163,13 +184,27 @@ class GeminiAssistantEngine(
                 }
             }
         } catch (e: TimeoutCancellationException) {
-            Log.e(TAG, "Gemini request timed out; falling back to offline engine", e)
-            runOfflineFallback(prompt, state, isArabic, isOffline = false)
+            val errorDetail = formatErrorDetails(e)
+            Log.e(TAG, "Gemini request timed out: $errorDetail", e)
+            runOfflineFallback(prompt, state, isArabic, isOffline = false, debugError = errorDetail)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Gemini call failed; falling back to offline engine", e)
-            runOfflineFallback(prompt, state, isArabic, isOffline = false)
+            val errorDetail = formatErrorDetails(e)
+            val debugToken = readPersistedAppCheckDebugToken()
+            Log.e(
+                TAG,
+                "Gemini call failed: $errorDetail" +
+                    (if (debugToken != null) " | AppCheckDebugToken=$debugToken" else ""),
+                e
+            )
+            runOfflineFallback(
+                prompt = prompt,
+                state = state,
+                isArabic = isArabic,
+                isOffline = false,
+                debugError = if (debugToken != null) "$errorDetail\nApp Check debug token: $debugToken" else errorDetail
+            )
         }
     }
 
@@ -177,14 +212,20 @@ class GeminiAssistantEngine(
         prompt: String,
         state: AssistantStateSnapshot,
         isArabic: Boolean,
-        isOffline: Boolean
+        isOffline: Boolean,
+        debugError: String? = null
     ): AssistantReply {
-        val notice = if (isArabic) {
+        val baseNotice = if (isArabic) {
             if (isOffline) "لا يوجد اتصال بالإنترنت — تم استخدام المساعد المحلي دون اتصال."
             else "تعذّر الوصول إلى Gemini الآن — تم استخدام المساعد المحلي."
         } else {
             if (isOffline) "No internet connection — using offline local assistant."
             else "Gemini is unavailable right now — using offline local assistant."
+        }
+        val notice = if (BuildConfig.DEBUG && !debugError.isNullOrBlank()) {
+            "$baseNotice\n[Debug] $debugError"
+        } else {
+            baseNotice
         }
 
         val rawFallback = fallbackEngine.processPrompt(prompt, state)
@@ -224,7 +265,8 @@ class GeminiAssistantEngine(
                     conflictWarning = conflictWarning
                 ),
                 focusMinutesToStart = null, // Rule 8: never take direct actions on phone
-                noticeText = notice
+                noticeText = notice,
+                debugErrorLog = debugError
             )
         }
 
@@ -243,8 +285,82 @@ class GeminiAssistantEngine(
             text = safeText,
             proposal = null,
             focusMinutesToStart = null,
-            noticeText = notice
+            noticeText = notice,
+            debugErrorLog = debugError
         )
+    }
+
+    private suspend fun invokeWithHighDemandRetry(modelName: String, fullPrompt: String): String? {
+        for (attempt in 0..MAX_HIGH_DEMAND_RETRIES) {
+            try {
+                return invokeSingleModel(modelName, fullPrompt)
+            } catch (e: TimeoutCancellationException) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isTransientHighDemandError(e) && attempt < MAX_HIGH_DEMAND_RETRIES) {
+                    Log.w(
+                        TAG,
+                        "Model $modelName hit 503/high-demand (attempt ${attempt + 1}/${MAX_HIGH_DEMAND_RETRIES + 1}); retrying in ${retryDelayMs}ms",
+                        e
+                    )
+                    if (retryDelayMs > 0L) delay(retryDelayMs)
+                } else {
+                    throw e
+                }
+            }
+        }
+        return null
+    }
+
+    private suspend fun invokeSingleModel(modelName: String, fullPrompt: String): String? {
+        if (modelByNameInvoker != null) {
+            return modelByNameInvoker.invoke(modelName, fullPrompt)
+        }
+        if (modelInvoker != null) {
+            return modelInvoker.invoke(fullPrompt)
+        }
+        val activeModel = if (modelName == FALLBACK_MODEL_NAME) fallbackModel else primaryModel
+        return activeModel.generateContent(fullPrompt).text
+    }
+
+    internal fun isTransientHighDemandError(throwable: Throwable): Boolean {
+        val details = generateSequence(throwable) { it.cause }
+            .take(5)
+            .joinToString(" | ") { "${it.javaClass.name}: ${it.message.orEmpty()}" }
+            .lowercase()
+        return details.contains("503") ||
+            details.contains("high demand") ||
+            details.contains("overloaded") ||
+            details.contains("service unavailable") ||
+            details.contains("temporarily unavailable") ||
+            details.contains("serviceunavailable")
+    }
+
+    private fun formatErrorDetails(throwable: Throwable): String {
+        val chain = generateSequence(throwable) { it.cause }
+            .take(4)
+            .map { err ->
+                val name = err.javaClass.simpleName.ifBlank { "Exception" }
+                val msg = err.localizedMessage ?: err.message ?: "No message"
+                "$name: $msg"
+            }
+            .toList()
+        return chain.joinToString(" -> ")
+    }
+
+    private fun readPersistedAppCheckDebugToken(): String? {
+        if (!BuildConfig.DEBUG) return null
+        val appContext = context ?: return null
+        return runCatching {
+            val persistenceKey = FirebaseApp.getInstance().persistenceKey
+            val prefs = appContext.getSharedPreferences(
+                "com.google.firebase.appcheck.debug.store.$persistenceKey",
+                Context.MODE_PRIVATE
+            )
+            prefs.getString("com.google.firebase.appcheck.debug.DEBUG_SECRET", null)
+        }.getOrNull()
     }
 
     private fun isNetworkAvailable(): Boolean {
@@ -292,6 +408,11 @@ class GeminiAssistantEngine(
     }
 
     companion object {
+        const val PRIMARY_MODEL_NAME = "gemini-3.8-flash"
+        const val FALLBACK_MODEL_NAME = "gemini-3.5-flash-lite"
+        private const val MAX_HIGH_DEMAND_RETRIES = 2
+        private const val HIGH_DEMAND_RETRY_DELAY_MS = 1_200L
+
         private const val SYSTEM_INSTRUCTION = """
 You are the Smart Companion routine builder assistant.
 You MUST ONLY return valid JSON matching the schema. Do NOT output markdown or prose outside JSON.

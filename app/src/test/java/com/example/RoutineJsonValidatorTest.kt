@@ -354,8 +354,11 @@ class RoutineJsonValidatorTest {
         )
         assertNotNull(failedArReply.noticeText)
         assertTrue(failedArReply.noticeText!!.contains("المساعد المحلي"))
-        assertNotNull(failedArReply.proposal)
-        assertTrue(failedArReply.proposal!!.routine.exceptions.any { it.type == ExceptionType.EMERGENCY_CONTACTS })
+        assertNotNull(failedArReply.debugErrorLog)
+        assertTrue(failedArReply.debugErrorLog!!.contains("Network error"))
+        val failedProposal = failedArReply.proposal
+        assertNotNull(failedProposal)
+        assertTrue(failedProposal!!.routine.exceptions.any { it.type == ExceptionType.EMERGENCY_CONTACTS })
     }
 
     @Test
@@ -387,9 +390,138 @@ class RoutineJsonValidatorTest {
             baseSnapshot()
         )
         assertNull(reply.noticeText)
+        assertNull(reply.debugErrorLog)
         assertNull(reply.focusMinutesToStart)
+        val proposal = reply.proposal
+        assertNotNull(proposal)
+        assertEquals("Study 8 to 10", proposal!!.routine.name)
+        assertTrue(proposal.routine.exceptions.any { it.type == ExceptionType.EMERGENCY_CONTACTS })
+    }
+
+    @Test
+    fun `GeminiAssistantEngine retries up to 2 times on 503 or high demand before succeeding`() = runTest {
+        val calledModels = mutableListOf<String>()
+        val validJson = """
+            {
+              "status": "ok",
+              "followUpQuestion": null,
+              "name": "Study 8 to 10",
+              "trigger": {
+                "type": "time_range",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "days": ["EVERY_DAY"]
+              },
+              "conditions": ["AUTOMATION_ENABLED"],
+              "action": { "mode": "silent" },
+              "exceptions": ["EMERGENCY_CONTACTS"]
+            }
+        """.trimIndent()
+
+        val engine = GeminiAssistantEngine(
+            connectivityChecker = { true },
+            retryDelayMs = 1L,
+            modelByNameInvoker = { modelName, _ ->
+                calledModels += modelName
+                when (calledModels.size) {
+                    1 -> throw IllegalStateException("503 Service Unavailable")
+                    2 -> throw IllegalStateException("The model is currently experiencing high demand.")
+                    else -> validJson
+                }
+            }
+        )
+
+        val reply = engine.processPrompt("silence my phone 8 to 10", baseSnapshot())
+        assertEquals(
+            listOf(
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME
+            ),
+            calledModels
+        )
+        assertNull(reply.noticeText)
         assertNotNull(reply.proposal)
         assertEquals("Study 8 to 10", reply.proposal!!.routine.name)
-        assertTrue(reply.proposal!!.routine.exceptions.any { it.type == ExceptionType.EMERGENCY_CONTACTS })
+    }
+
+    @Test
+    fun `GeminiAssistantEngine falls back to FALLBACK_MODEL_NAME when primary stays high demand and uses local assistant last`() = runTest {
+        val calledModels = mutableListOf<String>()
+        val validJson = """
+            {
+              "status": "ok",
+              "followUpQuestion": null,
+              "name": "Fallback Model Routine",
+              "trigger": {
+                "type": "time_range",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "days": ["EVERY_DAY"]
+              },
+              "conditions": ["AUTOMATION_ENABLED"],
+              "action": { "mode": "silent" },
+              "exceptions": ["EMERGENCY_CONTACTS"]
+            }
+        """.trimIndent()
+
+        // Case A: primary fails initial + 2 retries, fallback model succeeds
+        val fallbackSuccessEngine = GeminiAssistantEngine(
+            connectivityChecker = { true },
+            retryDelayMs = 1L,
+            modelByNameInvoker = { modelName, _ ->
+                calledModels += modelName
+                if (modelName == GeminiAssistantEngine.PRIMARY_MODEL_NAME) {
+                    throw IllegalStateException("The model is currently experiencing high demand.")
+                } else {
+                    validJson
+                }
+            }
+        )
+        val fallbackReply = fallbackSuccessEngine.processPrompt("silence 8 to 10", baseSnapshot())
+        assertEquals(
+            listOf(
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.FALLBACK_MODEL_NAME
+            ),
+            calledModels
+        )
+        assertNull(fallbackReply.noticeText)
+        assertNotNull(fallbackReply.proposal)
+        assertEquals("Fallback Model Routine", fallbackReply.proposal!!.routine.name)
+
+        // Case B: both primary and fallback models fail all retries -> local assistant as last fallback
+        val allFailedCalls = mutableListOf<String>()
+        val allFailEngine = GeminiAssistantEngine(
+            fallbackEngine = LocalDemoAssistantEngine(),
+            connectivityChecker = { true },
+            retryDelayMs = 1L,
+            modelByNameInvoker = { modelName, _ ->
+                allFailedCalls += modelName
+                throw IllegalStateException("503: model is currently experiencing high demand")
+            }
+        )
+        val localReply = allFailEngine.processPrompt(
+            "Keep my phone silent every day from 8 PM to 10 PM",
+            baseSnapshot()
+        )
+        assertEquals(
+            listOf(
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.PRIMARY_MODEL_NAME,
+                GeminiAssistantEngine.FALLBACK_MODEL_NAME,
+                GeminiAssistantEngine.FALLBACK_MODEL_NAME,
+                GeminiAssistantEngine.FALLBACK_MODEL_NAME
+            ),
+            allFailedCalls
+        )
+        assertNotNull(localReply.noticeText)
+        assertTrue(localReply.noticeText!!.contains("Gemini is unavailable"))
+        assertNotNull(localReply.debugErrorLog)
+        assertTrue(localReply.debugErrorLog!!.contains("503"))
+        assertNotNull(localReply.proposal)
     }
 }

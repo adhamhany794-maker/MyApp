@@ -3,6 +3,7 @@ package com.example.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
@@ -984,6 +985,16 @@ class SmartCompanionViewModel(
                 recentConversation = history
             )
             val reply = assistantEngine.processPrompt(trimmed, snapshot)
+
+            if (BuildConfig.DEBUG && !reply.debugErrorLog.isNullOrBlank()) {
+                repository.logEvent(
+                    title = "Gemini Debug Error Log",
+                    category = EventCategory.ASSISTANT,
+                    triggerSource = "GeminiAssistantEngine",
+                    result = reply.debugErrorLog,
+                    explanation = "Debug diagnostic captured when Gemini fell back to the local assistant."
+                )
+            }
 
             val assistantMsg = AssistantMessage(
                 id = UUID.randomUUID().toString(),
