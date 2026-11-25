@@ -79,6 +79,7 @@ fun ProfilesScreen(
     var showHelp by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {

@@ -191,7 +191,7 @@ class AutomationSimulationEngine {
                 trace = SimulationTrace(
                     id = UUID.randomUUID().toString(),
                     triggerReceived = triggerLabel,
-                    matchingRoutineNames = sorted.map { "${it.name} (P${it.priority})" },
+                    matchingRoutineNames = sorted.map { it.name },
                     conditionsEvaluated = conditionLogs,
                     exceptionsChecked = exceptionLogs,
                     actionsSelected = listOf("Awaiting user confirmation before executing"),
@@ -355,7 +355,7 @@ class AutomationSimulationEngine {
         }
 
         val summaryText = if (hasConflict) {
-            "Resolved conflict by priority: executed '${winner.name}' (Priority ${winner.priority})."
+            "Resolved overlap: executed '${winner.name}'."
         } else {
             "Executed '${winner.name}' cleanly."
         }
@@ -364,7 +364,7 @@ class AutomationSimulationEngine {
             trace = SimulationTrace(
                 id = UUID.randomUUID().toString(),
                 triggerReceived = triggerLabel,
-                matchingRoutineNames = allMatched.map { "${it.name} (P${it.priority})" },
+                matchingRoutineNames = allMatched.map { it.name },
                 conditionsEvaluated = conditionLogs,
                 exceptionsChecked = exceptionLogs,
                 actionsSelected = winner.actions.map { it.label },

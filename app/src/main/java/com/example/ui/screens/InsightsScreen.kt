@@ -77,8 +77,8 @@ fun InsightsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (showHeader) {
             item {
@@ -92,47 +92,32 @@ fun InsightsScreen(
             }
         }
 
-        // 1. Clean 2x2 KPI Summary Grid
+        // 1. Two Summary Cards at the Top
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    KpiCard(
-                        value = TimeUtils.formatDurationMinutes(totalFocusMins, strings.isArabic),
-                        label = strings.totalFocusLabel,
-                        accent = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    KpiCard(
-                        value = "$totalExecutions",
-                        label = strings.executionsLabel,
-                        accent = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    KpiCard(
-                        value = "$blockedInterruptions",
-                        label = strings.blockedLabel,
-                        accent = StatusEmerald,
-                        modifier = Modifier.weight(1f)
-                    )
-                    KpiCard(
-                        value = "${state.focusSessions.size}",
-                        label = strings.sessionsLabel,
-                        accent = StatusAmber,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                KpiCard(
+                    value = TimeUtils.formatDurationMinutes(totalFocusMins, strings.isArabic),
+                    label = strings.totalFocusLabel,
+                    accent = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("insights_summary_focus")
+                )
+                KpiCard(
+                    value = "$blockedInterruptions",
+                    label = strings.blockedLabel,
+                    accent = StatusEmerald,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("insights_summary_blocked")
+                )
             }
         }
 
-        // 2. Focus Analytics Chart + Goal
+        // 2. Focus Analytics Bar Chart (Rounded Bars) + Goal
         item {
             CompanionCard(modifier = Modifier.testTag("insights_focus_card")) {
                 Text(strings.focusTrendTitle, style = MaterialTheme.typography.titleMedium)
@@ -142,7 +127,7 @@ fun InsightsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 val trendBars = state.focusSessions.take(5).reversed().mapIndexed { idx, s ->
                     BarChartEntry(
                         label = if (strings.isArabic) "ج${idx + 1}" else "S${idx + 1}",
@@ -154,7 +139,7 @@ fun InsightsScreen(
                 if (trendBars.isNotEmpty()) {
                     VerticalTrendChart(entries = trendBars)
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -166,18 +151,18 @@ fun InsightsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { goalRatio },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(999.dp))
                 )
             }
         }
 
-        // 3. Interruption Breakdown
+        // 3. Interruption Breakdown (Rounded Horizontal Bars)
         item {
             CompanionCard {
                 FlowRow(
@@ -197,7 +182,7 @@ fun InsightsScreen(
                         Text(strings.exploreAppsBtn)
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -206,20 +191,20 @@ fun InsightsScreen(
                     InsightMetric(strings.blockedLabel, "$blockedInterruptions", Modifier.weight(1f), StatusEmerald)
                     InsightMetric(strings.allowedLabel, "$allowedInterruptions", Modifier.weight(1f), StatusAmber)
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 val catBars = weekStats.sortedByDescending { it.totalCount }.take(4).map { stat ->
                     BarChartEntry(
                         label = "${strings.categoryLabel(stat.category)} (${stat.peakHourRange})",
                         value = stat.totalCount.toFloat(),
                         valueLabel = "${stat.totalCount}",
-                        color = if (stat.blockedCount > stat.importantCount) StatusCrimson else MaterialTheme.colorScheme.secondary
+                        color = if (stat.blockedCount > stat.importantCount) MaterialTheme.colorScheme.primary else StatusEmerald
                     )
                 }
                 HorizontalMetricBars(entries = catBars)
             }
         }
 
-        // 4. Profile Usage & Automation Reliability
+        // 4. Profile Usage & Automation Reliability (Rounded Bars)
         item {
             CompanionCard {
                 Text(strings.frequentProfilesLabel, style = MaterialTheme.typography.titleMedium)
@@ -229,7 +214,7 @@ fun InsightsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -238,7 +223,7 @@ fun InsightsScreen(
                     InsightMetric(strings.skippedLabel, "$totalSkipped", Modifier.weight(1f), StatusAmber)
                     InsightMetric(strings.conflictsLabel, "$detectedConflicts", Modifier.weight(1f), StatusCrimson)
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 val profileCounts = state.profiles.map { profile ->
                     val score = state.routines.filter { it.targetProfileId == profile.id }.sumOf { it.executionCount } +
                         state.focusSessions.count { it.profileId == profile.id } * 3 +
@@ -257,7 +242,7 @@ fun InsightsScreen(
         // 5. Concise Recommendations
         item {
             CompanionCard(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
             ) {
                 Text(strings.recommendationsTitle, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
@@ -317,7 +302,7 @@ private fun KpiCard(
     CompanionCard(modifier = modifier) {
         Text(
             text = value,
-            style = MaterialTheme.typography.headlineSmall.copy(fontFamily = JetBrainsMonoFamily),
+            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = JetBrainsMonoFamily),
             color = accent
         )
         Spacer(Modifier.height(4.dp))

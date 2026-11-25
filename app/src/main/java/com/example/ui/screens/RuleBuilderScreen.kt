@@ -1,8 +1,9 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -16,26 +17,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,8 +43,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.models.ActionType
 import com.example.models.ConditionType
@@ -68,6 +69,7 @@ import com.example.ui.components.CompanionCard
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
@@ -77,6 +79,13 @@ import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
 import java.util.UUID
 import kotlin.math.roundToInt
+
+private enum class BuilderStepSheet {
+    WHEN,
+    ONLY_IF,
+    DO_THIS,
+    EXCEPT
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -89,11 +98,8 @@ fun RuleBuilderScreen(
 ) {
     val initial = existingRoutine ?: state.routineDraftFromAssistant
 
-    // If editing an existing rule, start on Review (or Step 1) - starting at Step 1 makes guided editing clear,
-    // and clickable step tabs let users jump directly to Review (Step 5) anytime.
-    var currentStep by remember(initial?.id) { mutableIntStateOf(if (existingRoutine != null) 4 else 0) }
+    var activeSheet by remember { mutableStateOf<BuilderStepSheet?>(null) }
     var showHelp by remember { mutableStateOf(false) }
-    var showAdvancedOptions by remember { mutableStateOf(false) }
 
     var name by remember(initial?.id) {
         mutableStateOf(
@@ -107,7 +113,7 @@ fun RuleBuilderScreen(
             else initial?.description ?: ""
         )
     }
-    var priority by remember(initial?.id) { mutableIntStateOf(initial?.priority ?: 7) }
+    var priority by remember(initial?.id) { mutableIntStateOf(initial?.priority ?: 6) }
 
     // 1. WHEN
     var triggerType by remember(initial?.id) {
@@ -126,7 +132,7 @@ fun RuleBuilderScreen(
     }
     var endHour by remember(initial?.id) { mutableIntStateOf(20) }
 
-    // 2. CONDITIONS
+    // 2. ONLY IF (Conditions)
     var selectedConditions by remember(initial?.id) {
         mutableStateOf(
             initial?.conditions?.map { it.type }?.toSet()
@@ -134,7 +140,7 @@ fun RuleBuilderScreen(
         )
     }
 
-    // 3. ACTIONS
+    // 3. DO THIS (Actions)
     var selectedActionTypes by remember(initial?.id) {
         mutableStateOf(
             initial?.actions?.map { it.type }?.toSet()
@@ -153,7 +159,7 @@ fun RuleBuilderScreen(
     }
     var focusDuration by remember(initial?.id) { mutableIntStateOf(45) }
 
-    // 4. EXCEPTIONS
+    // 4. EXCEPT (Exceptions)
     var selectedExceptions by remember(initial?.id) {
         mutableStateOf(
             initial?.exceptions?.map { it.type }?.toSet()
@@ -163,6 +169,10 @@ fun RuleBuilderScreen(
 
     var validationError by remember { mutableStateOf<String?>(null) }
     var testResultText by remember { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = activeSheet != null) {
+        activeSheet = null
+    }
 
     val triggerSummary = when (triggerType) {
         TriggerType.SPECIFIC_TIME ->
@@ -183,15 +193,23 @@ fun RuleBuilderScreen(
             "${strings.triggerTypeLabel(TriggerType.ACTIVITY_ENDED)}: ${strings.activityLabel(activity)}"
     }
 
-    val stepLabels = if (strings.isArabic) {
-        listOf("1. متى", "2. الشروط", "3. الإجراءات", "4. الاستثناءات", "5. المراجعة")
-    } else {
-        listOf("1. When", "2. Conditions", "3. Actions", "4. Exceptions", "5. Review")
-    }
+    val conditionSummary = selectedConditions.joinToString(" • ") { strings.conditionTypeLabel(it) }
+        .ifEmpty { if (strings.isArabic) "مثال: فقط أثناء أيام الدراسة" else "e.g., Only when automation is active" }
+
+    val targetProfileName = state.profiles.firstOrNull { it.id == targetProfileId }
+        ?.let { strings.localizedProfileName(it) } ?: "Study"
+    val actionSummary = selectedActionTypes.joinToString(" • ") {
+        when (it) {
+            ActionType.ACTIVATE_PROFILE -> targetProfileName
+            ActionType.SET_SOUND_MODE -> strings.soundModeLabel(targetSoundMode)
+            else -> strings.actionTypeLabel(it)
+        }
+    }.ifEmpty { if (strings.isArabic) "مثال: تفعيل وضع الدراسة وصامت" else "e.g., Turn on Study mode & Silent" }
+
+    val exceptionSummary = selectedExceptions.joinToString(" • ") { strings.exceptionTypeLabel(it) }
+        .ifEmpty { if (strings.isArabic) "مثال: جهات الطوارئ تصلك دائماً" else "e.g., Emergency contacts always get through" }
 
     fun buildCandidateRoutine(): SmartRoutine {
-        val targetProfile = state.profiles.firstOrNull { it.id == targetProfileId }
-        val targetProfileName = targetProfile?.let { strings.localizedProfileName(it) } ?: "Study"
         val resolvedName = name.trim()
         val actions = selectedActionTypes.map { type ->
             when (type) {
@@ -249,70 +267,25 @@ fun RuleBuilderScreen(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    if (activeSheet != null) {
         LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item {
-                ScreenIntroHeader(
-                    title = if (existingRoutine != null) "${strings.edit}: ${strings.localizedRoutineName(existingRoutine)}" else strings.screenRuleBuilder,
-                    subtitle = strings.ruleBuilderSubtitle,
-                    strings = strings,
-                    onInfoClick = { showHelp = true }
-                )
-            }
-
-            // Guided Step Indicator + Progress
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LinearProgressIndicator(
-                        progress = { (currentStep + 1) / 5f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(MaterialTheme.shapes.small)
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        stepLabels.forEachIndexed { idx, label ->
-                            val selected = currentStep == idx
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    validationError = null
-                                    currentStep = idx
-                                },
-                                label = { Text(label) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                ),
-                                modifier = Modifier.testTag("builder_step_$idx")
-                            )
-                        }
-                    }
-                }
-            }
-
-            when (currentStep) {
-                // STEP 1: WHEN
-                0 -> item {
+            when (activeSheet) {
+                BuilderStepSheet.WHEN -> item {
                     CompanionCard {
-                        Text(strings.stepWhenTitle, style = MaterialTheme.typography.titleMedium)
+                        Text(strings.stepWhenTitle, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             strings.whenHint,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             TriggerType.entries.forEach { t ->
@@ -325,7 +298,7 @@ fun RuleBuilderScreen(
                             }
                         }
 
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(14.dp))
                         if (triggerType in listOf(TriggerType.SPECIFIC_TIME, TriggerType.DATE_AND_TIME, TriggerType.SPECIFIC_DAYS)) {
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -346,7 +319,7 @@ fun RuleBuilderScreen(
                                 }
                             }
                             if (triggerType != TriggerType.SPECIFIC_DAYS) {
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(12.dp))
                                 Text(
                                     text = TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic),
                                     style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
@@ -399,18 +372,18 @@ fun RuleBuilderScreen(
                     }
                 }
 
-                // STEP 2: CONDITIONS
-                1 -> item {
+                BuilderStepSheet.ONLY_IF -> item {
                     CompanionCard {
-                        Text(strings.stepConditionsTitle, style = MaterialTheme.typography.titleMedium)
+                        Text(strings.stepConditionsTitle, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             strings.alwaysRunNote,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             ConditionType.entries.forEach { cond ->
@@ -427,18 +400,18 @@ fun RuleBuilderScreen(
                     }
                 }
 
-                // STEP 3: ACTIONS
-                2 -> item {
+                BuilderStepSheet.DO_THIS -> item {
                     CompanionCard {
-                        Text(strings.stepActionsTitle, style = MaterialTheme.typography.titleMedium)
+                        Text(strings.stepActionsTitle, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             strings.actionsHint,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             ActionType.entries.forEach { act ->
@@ -456,7 +429,7 @@ fun RuleBuilderScreen(
                         }
 
                         if (ActionType.ACTIVATE_PROFILE in selectedActionTypes) {
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             Text(strings.targetProfileLabel, style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.height(6.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -471,7 +444,7 @@ fun RuleBuilderScreen(
                         }
 
                         if (ActionType.SET_SOUND_MODE in selectedActionTypes) {
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             Text(strings.simulatedPhoneStatus, style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.height(6.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -486,7 +459,7 @@ fun RuleBuilderScreen(
                         }
 
                         if (ActionType.START_FOCUS_SESSION in selectedActionTypes) {
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             Text(
                                 "${strings.focusDurationLabel}: ${TimeUtils.formatDurationMinutes(focusDuration, strings.isArabic)}",
                                 style = MaterialTheme.typography.labelLarge
@@ -502,270 +475,267 @@ fun RuleBuilderScreen(
                                 }
                             }
                         }
-
-                        if (validationError != null) {
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = validationError!!,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.testTag("rule_validation_error")
-                            )
-                        }
                     }
                 }
 
-                // STEP 4: EXCEPTIONS & ADVANCED PRIORITY
-                3 -> {
-                    item {
-                        CompanionCard {
-                            Text(strings.stepExceptionsTitle, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                strings.exceptionsHint,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                ExceptionType.entries.forEach { exc ->
-                                    val active = exc in selectedExceptions
-                                    FilterChip(
-                                        selected = active,
-                                        onClick = {
-                                            selectedExceptions = if (active) selectedExceptions - exc else selectedExceptions + exc
-                                        },
-                                        label = { Text(strings.exceptionTypeLabel(exc)) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    item {
-                        CompanionCard {
-                            TextButton(
-                                onClick = { showAdvancedOptions = !showAdvancedOptions },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(strings.advancedRuleOptions, modifier = Modifier.weight(1f))
-                                Icon(
-                                    imageVector = if (showAdvancedOptions) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                                    contentDescription = null
-                                )
-                            }
-                            AnimatedVisibility(visible = showAdvancedOptions) {
-                                Column {
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(
-                                        text = "${strings.priorityLevelPrefix}: $priority / 10",
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                    Slider(
-                                        value = priority.toFloat(),
-                                        onValueChange = { priority = it.roundToInt().coerceIn(1, 10) },
-                                        valueRange = 1f..10f,
-                                        steps = 8
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // STEP 5: REVIEW & SAVE
-                4 -> {
-                    item {
-                        CompanionCard {
-                            Text(strings.stepReviewTitle, style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(10.dp))
-                            OutlinedTextField(
-                                value = name,
-                                onValueChange = { name = it; validationError = null },
-                                label = { Text(strings.ruleNameLabel) },
-                                placeholder = { Text(strings.ruleNameHint) },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("rule_name_input")
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            OutlinedTextField(
-                                value = description,
-                                onValueChange = { description = it },
-                                label = { Text(strings.ruleDescLabel) },
-                                placeholder = { Text(strings.ruleDescHint) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    item {
-                        CompanionCard(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
-                            borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                BuilderStepSheet.EXCEPT -> item {
+                    CompanionCard {
+                        Text(strings.stepExceptionsTitle, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            strings.exceptionsHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(strings.ruleSummaryTitle, style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(8.dp))
-                            val condList = selectedConditions.joinToString { strings.conditionTypeLabel(it) }
-                                .ifEmpty { if (strings.isArabic) "دائماً" else "Always" }
-                            val actList = selectedActionTypes.joinToString { strings.actionTypeLabel(it) }
-                                .ifEmpty { strings.errRuleActionRequired }
-                            val excList = selectedExceptions.joinToString { strings.exceptionTypeLabel(it) }
-                                .ifEmpty { if (strings.isArabic) "لا يوجد" else "None" }
-
-                            RuleSummaryRow(if (strings.isArabic) "متى" else "WHEN", triggerSummary)
-                            RuleSummaryRow(if (strings.isArabic) "الشروط" else "CONDITIONS", condList)
-                            RuleSummaryRow(if (strings.isArabic) "الإجراءات" else "ACTIONS", actList)
-                            RuleSummaryRow(if (strings.isArabic) "الاستثناءات" else "EXCEPTIONS", excList)
-
-                            if (validationError != null) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = validationError!!,
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.testTag("rule_validation_error")
+                            ExceptionType.entries.forEach { exc ->
+                                val active = exc in selectedExceptions
+                                FilterChip(
+                                    selected = active,
+                                    onClick = {
+                                        selectedExceptions = if (active) selectedExceptions - exc else selectedExceptions + exc
+                                    },
+                                    label = { Text(strings.exceptionTypeLabel(exc)) }
                                 )
-                            }
-
-                            if (testResultText != null) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = testResultText!!,
-                                    color = StatusEmerald,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.testTag("rule_test_result")
-                                )
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    if (name.isBlank()) {
-                                        validationError = strings.errRuleNameRequired
-                                        return@OutlinedButton
-                                    }
-                                    if (selectedActionTypes.isEmpty()) {
-                                        validationError = strings.errRuleActionRequired
-                                        return@OutlinedButton
-                                    }
-                                    validationError = null
-                                    val candidate = buildCandidateRoutine()
-                                    val engine = AutomationSimulationEngine()
-                                    val simEvent = when (triggerType) {
-                                        TriggerType.LOCATION_ENTERED -> SimulationEvent.LocationEntered(location.displayName)
-                                        TriggerType.LOCATION_EXITED -> SimulationEvent.LocationExited(location.displayName)
-                                        TriggerType.ACTIVITY_STARTED -> SimulationEvent.ActivityStarted(activity.displayName)
-                                        TriggerType.ACTIVITY_ENDED -> SimulationEvent.ActivityEnded(activity.displayName)
-                                        TriggerType.MANUAL -> SimulationEvent.ManualRoutine(candidate.id)
-                                        TriggerType.FOCUS_STARTED -> SimulationEvent.FocusLifecycle(true)
-                                        TriggerType.FOCUS_ENDED -> SimulationEvent.FocusLifecycle(false)
-                                        else -> SimulationEvent.TimeAndDay(triggerHour, triggerMinute, dayFilter)
-                                    }
-                                    val ctx = state.preferences.simulatedContext.copy(
-                                        simulatedHour = triggerHour,
-                                        simulatedMinute = triggerMinute,
-                                        simulatedDay = dayFilter,
-                                        location = location,
-                                        activity = activity
-                                    )
-                                    val eval = engine.evaluate(
-                                        event = simEvent,
-                                        routines = listOf(candidate),
-                                        profiles = state.profiles,
-                                        context = ctx,
-                                        isAutomationPaused = false,
-                                        activeProfileId = state.preferences.activeProfileId,
-                                        isFocusActive = state.activeFocus.isActive,
-                                        conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
-                                    )
-                                    testResultText = if (strings.isArabic) {
-                                        "نجح الاختبار: ${eval.trace.finalResult}"
-                                    } else {
-                                        "Test Passed: ${eval.trace.finalResult}"
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("test_rule_button")
-                            ) {
-                                Icon(Icons.Rounded.Science, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.testRuleBtn)
                             }
                         }
                     }
+                }
+
+                null -> Unit
+            }
+
+            item {
+                Button(
+                    onClick = { activeSheet = null },
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("builder_step_done_btn")
+                ) {
+                    Text(strings.builderDoneBtn)
+                }
+            }
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("rule_builder_list"),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            ScreenIntroHeader(
+                title = if (existingRoutine != null) "${strings.edit}: ${strings.localizedRoutineName(existingRoutine)}" else strings.screenRuleBuilder,
+                subtitle = strings.ruleBuilderSubtitle,
+                strings = strings,
+                onInfoClick = { showHelp = true }
+            )
+        }
+
+        // Big Rounded Rows: When, Only if, Do this, Except
+        item {
+            BuilderOverviewRow(
+                title = strings.builderRowWhenTitle,
+                example = triggerSummary,
+                icon = Icons.Rounded.Schedule,
+                accent = MaterialTheme.colorScheme.primary,
+                onClick = { activeSheet = BuilderStepSheet.WHEN },
+                modifier = Modifier.testTag("builder_step_0")
+            )
+        }
+
+        item {
+            BuilderOverviewRow(
+                title = strings.builderRowOnlyIfTitle,
+                example = conditionSummary,
+                icon = Icons.Rounded.FilterList,
+                accent = MaterialTheme.colorScheme.tertiary,
+                onClick = { activeSheet = BuilderStepSheet.ONLY_IF },
+                modifier = Modifier.testTag("builder_step_1")
+            )
+        }
+
+        item {
+            BuilderOverviewRow(
+                title = strings.builderRowDoThisTitle,
+                example = actionSummary,
+                icon = Icons.Rounded.Bolt,
+                accent = StatusAmber,
+                onClick = { activeSheet = BuilderStepSheet.DO_THIS },
+                modifier = Modifier.testTag("builder_step_2")
+            )
+        }
+
+        item {
+            BuilderOverviewRow(
+                title = strings.builderRowExceptTitle,
+                example = exceptionSummary,
+                icon = Icons.Rounded.Shield,
+                accent = StatusEmerald,
+                onClick = { activeSheet = BuilderStepSheet.EXCEPT },
+                modifier = Modifier.testTag("builder_step_3")
+            )
+        }
+
+        // Routine Name, Importance (High/Medium/Low), and Save
+        item {
+            CompanionCard {
+                Text(strings.stepReviewTitle, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; validationError = null },
+                    label = { Text(strings.ruleNameLabel) },
+                    placeholder = { Text(strings.ruleNameHint) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("rule_name_input")
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text(strings.ruleDescLabel) },
+                    placeholder = { Text(strings.ruleDescHint) },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(strings.advancedRuleOptions, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        3 to strings.priorityLowLabel,
+                        6 to strings.priorityMediumLabel,
+                        9 to strings.priorityHighLabel
+                    ).forEach { (tierValue, tierLabel) ->
+                        val selected = strings.priorityTierLabel(priority) == tierLabel
+                        FilterChip(
+                            selected = selected,
+                            onClick = { priority = tierValue },
+                            label = { Text(tierLabel) },
+                            modifier = Modifier.testTag("priority_tier_$tierValue")
+                        )
+                    }
+                }
+
+                if (validationError != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = validationError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("rule_validation_error")
+                    )
+                }
+
+                if (testResultText != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = testResultText!!,
+                        color = StatusEmerald,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.testTag("rule_test_result")
+                    )
                 }
             }
         }
 
-        // Bottom Guided Step Navigation Footer
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (currentStep > 0) {
-                    OutlinedButton(onClick = {
-                        validationError = null
-                        currentStep -= 1
-                    }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(strings.back)
-                    }
-                } else {
-                    Spacer(Modifier.width(4.dp))
+        // One Primary Orange Action + Secondary Test Link
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = {
+                        if (name.isBlank()) {
+                            validationError = strings.errRuleNameRequired
+                            return@Button
+                        }
+                        if (selectedActionTypes.isEmpty()) {
+                            validationError = strings.errRuleActionRequired
+                            return@Button
+                        }
+                        viewModel.saveRoutine(buildCandidateRoutine())
+                        onSaved()
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("save_rule_button")
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(strings.saveRuleBtn)
                 }
 
-                if (currentStep < 4) {
-                    Button(
-                        onClick = {
-                            if (currentStep == 2 && selectedActionTypes.isEmpty()) {
-                                validationError = strings.errRuleActionRequired
-                                return@Button
-                            }
-                            validationError = null
-                            currentStep += 1
-                        },
-                        modifier = Modifier.testTag("builder_next_button")
-                    ) {
-                        Text(strings.next)
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            if (name.isBlank()) {
-                                validationError = strings.errRuleNameRequired
-                                return@Button
-                            }
-                            if (selectedActionTypes.isEmpty()) {
-                                validationError = strings.errRuleActionRequired
-                                return@Button
-                            }
-                            viewModel.saveRoutine(buildCandidateRoutine())
-                            onSaved()
-                        },
-                        modifier = Modifier.testTag("save_rule_button")
-                    ) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.saveRuleBtn)
-                    }
+                OutlinedButton(
+                    onClick = {
+                        if (name.isBlank()) {
+                            validationError = strings.errRuleNameRequired
+                            return@OutlinedButton
+                        }
+                        if (selectedActionTypes.isEmpty()) {
+                            validationError = strings.errRuleActionRequired
+                            return@OutlinedButton
+                        }
+                        validationError = null
+                        val candidate = buildCandidateRoutine()
+                        val engine = AutomationSimulationEngine()
+                        val simEvent = when (triggerType) {
+                            TriggerType.LOCATION_ENTERED -> SimulationEvent.LocationEntered(location.displayName)
+                            TriggerType.LOCATION_EXITED -> SimulationEvent.LocationExited(location.displayName)
+                            TriggerType.ACTIVITY_STARTED -> SimulationEvent.ActivityStarted(activity.displayName)
+                            TriggerType.ACTIVITY_ENDED -> SimulationEvent.ActivityEnded(activity.displayName)
+                            TriggerType.MANUAL -> SimulationEvent.ManualRoutine(candidate.id)
+                            TriggerType.FOCUS_STARTED -> SimulationEvent.FocusLifecycle(true)
+                            TriggerType.FOCUS_ENDED -> SimulationEvent.FocusLifecycle(false)
+                            else -> SimulationEvent.TimeAndDay(triggerHour, triggerMinute, dayFilter)
+                        }
+                        val ctx = state.preferences.simulatedContext.copy(
+                            simulatedHour = triggerHour,
+                            simulatedMinute = triggerMinute,
+                            simulatedDay = dayFilter,
+                            location = location,
+                            activity = activity
+                        )
+                        val eval = engine.evaluate(
+                            event = simEvent,
+                            routines = listOf(candidate),
+                            profiles = state.profiles,
+                            context = ctx,
+                            isAutomationPaused = false,
+                            activeProfileId = state.preferences.activeProfileId,
+                            isFocusActive = state.activeFocus.isActive,
+                            conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
+                        )
+                        testResultText = if (strings.isArabic) {
+                            "نجح الاختبار: ${eval.trace.finalResult}"
+                        } else {
+                            "Test Passed: ${eval.trace.finalResult}"
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("test_rule_button")
+                ) {
+                    Icon(Icons.Rounded.Science, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.testRuleBtn)
                 }
             }
         }
@@ -781,21 +751,59 @@ fun RuleBuilderScreen(
 }
 
 @Composable
-private fun RuleSummaryRow(label: String, value: String) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-            color = MaterialTheme.colorScheme.secondary
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        HorizontalDivider(
-            modifier = Modifier.padding(top = 6.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-        )
+private fun BuilderOverviewRow(
+    title: String,
+    example: String,
+    icon: ImageVector,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    CompanionCard(
+        onClick = onClick,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(accent.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = accent,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = example,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

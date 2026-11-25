@@ -228,7 +228,7 @@ fun ContextAwarenessScreen(
                 } else {
                     matchingRoutines.forEach { r ->
                         Text(
-                            text = "• ${strings.localizedRoutineName(r)} (P${r.priority}) — ${strings.triggerTypeLabel(r.trigger.type)}",
+                            text = "• ${strings.localizedRoutineName(r)} (${strings.priorityTierLabel(r.priority)}) — ${strings.triggerTypeLabel(r.trigger.type)}",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

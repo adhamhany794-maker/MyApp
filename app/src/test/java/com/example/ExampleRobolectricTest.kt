@@ -33,37 +33,56 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `4 bottom tabs, simplified home cards, 2-tap merged routes, and arabic rtl replay onboarding`() {
+    fun `floating pill bar with center plus button, simplified home, collapsed advanced settings, and arabic rtl replay`() {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithTag("onboarding_skip_button").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("onboarding_skip_button").performClick()
 
-        // Verify strictly 4 bottom navigation tabs: Home, Routines, Assistant, Settings
+        // Verify 4 bottom tabs + center orange '+' button
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithTag("nav_home").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("nav_home").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_routines").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_new_routine").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_assistant").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_settings").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithTag("nav_contacts").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("nav_insights").fetchSemanticsNodes().isEmpty())
 
-        // Verify Home screen displays the 3 primary cards
+        // Verify Home shows calm demo badge, no paused banner by default, and the 3 primary cards
+        composeRule.onNodeWithTag("home_demo_badge").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithTag("home_paused_banner").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("home_card_assistant").assertIsDisplayed()
         composeRule.onNodeWithTag("home_card_routines").assertIsDisplayed()
         composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_card_contacts"))
         composeRule.onNodeWithTag("home_card_contacts").assertIsDisplayed()
 
-        // Navigate Home -> Emergency contacts (1 tap)
+        // Tap center '+' button to verify Rule Builder rows: When, Only if, Do this, Except
+        composeRule.onNodeWithTag("nav_new_routine").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("builder_step_0").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("builder_step_0").assertIsDisplayed()
+        composeRule.onNodeWithTag("builder_step_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("builder_step_2").assertIsDisplayed()
+        composeRule.onNodeWithTag("rule_builder_list").performScrollToNode(hasTestTag("builder_step_3"))
+        composeRule.onNodeWithTag("builder_step_3").assertIsDisplayed()
+        composeRule.onNodeWithTag("top_back_button").performClick()
+
+        // Navigate Home -> Emergency contacts
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("home_screen_list").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_card_contacts"))
         composeRule.onNodeWithTag("home_card_contacts").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("top_back_button").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("top_back_button").performClick()
 
-        // Navigate Settings -> More -> Activity (2 taps total)
+        // Navigate Settings -> Activity
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("nav_settings").fetchSemanticsNodes().isNotEmpty()
         }
@@ -80,9 +99,15 @@ class ExampleRobolectricTest {
         composeRule.onNodeWithTag("activity_tab_NOTIFICATIONS").assertIsDisplayed()
         composeRule.onNodeWithTag("top_back_button").performClick()
 
-        // Navigate Settings -> Advanced (2 taps total)
+        // Verify Advanced section is collapsed by default, then expand & navigate to Advanced tools
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("settings_list").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue(composeRule.onAllNodesWithTag("settings_advanced_row").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("settings_advanced_toggle"))
+        composeRule.onNodeWithTag("settings_advanced_toggle").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("settings_advanced_row").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("settings_advanced_row"))
         composeRule.onNodeWithTag("settings_advanced_row").performClick()

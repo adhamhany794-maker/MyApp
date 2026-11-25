@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Shield
@@ -59,6 +63,7 @@ import com.example.ui.components.CompanionCard
 import com.example.ui.components.ConfirmActionDialog
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ScreenIntroHeader
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.SimulatedDemoBadge
 import com.example.ui.navigation.NavRoutes
 import com.example.ui.theme.StatusAmber
@@ -81,6 +86,8 @@ fun SettingsScreen(
 ) {
     var showResetConfirm by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
+    var showAdvancedSection by remember { mutableStateOf(false) }
+
     val conflicts = remember(state.routines) {
         AutomationSimulationEngine().findPotentialConflicts(state.routines)
     }
@@ -92,8 +99,8 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .testTag("settings_list"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             ScreenIntroHeader(
@@ -104,69 +111,119 @@ fun SettingsScreen(
             )
         }
 
-        // 1. Emergency Contacts & More > Activity & Advanced Links
+        // SECTION 1: GENERAL
         item {
-            CompanionCard {
-                SettingsNavRow(
-                    title = strings.navContacts,
-                    subtitle = "$emergencyCount ${strings.homeCardContactsSubSuffix}",
-                    icon = Icons.Rounded.Shield,
-                    accentColor = StatusEmerald,
-                    onClick = { onNavigate(NavRoutes.CONTACTS) },
-                    modifier = Modifier.testTag("settings_contacts_row")
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader(
+                    title = strings.settingsGeneralTitle,
+                    subtitle = strings.settingsGeneralExplain
                 )
-            }
-        }
 
-        // More Section -> Activity (Insights + History + Notifications) & Advanced (Context + Demo Playground)
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = strings.settingsMoreTitle.uppercase(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
                 CompanionCard {
-                    SettingsNavRow(
-                        title = strings.screenActivity,
-                        subtitle = strings.descActivityMerged,
-                        icon = Icons.Rounded.BarChart,
-                        accentColor = MaterialTheme.colorScheme.primary,
-                        onClick = { onNavigate(NavRoutes.ACTIVITY) },
-                        modifier = Modifier.testTag("settings_activity_row")
+                    // Appearance
+                    Text(strings.appearanceTitle, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.appearanceExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = state.preferences.themeMode == mode,
+                                onClick = { viewModel.setThemeMode(mode) },
+                                label = { Text(strings.themeModeLabel(mode)) },
+                                modifier = Modifier.testTag("theme_${mode.name}")
+                            )
+                        }
+                    }
+
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp),
+                        modifier = Modifier.padding(vertical = 12.dp),
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
-                    SettingsNavRow(
-                        title = strings.screenAdvanced,
-                        subtitle = strings.descAdvanced,
-                        icon = Icons.Rounded.Science,
-                        accentColor = StatusIndigo,
-                        onClick = { onNavigate(NavRoutes.ADVANCED) },
-                        modifier = Modifier.testTag("settings_advanced_row")
+
+                    // Language & RTL
+                    Text(strings.languageTitle, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.languageSub,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppLanguage.entries.forEach { lang ->
+                            FilterChip(
+                                selected = state.preferences.language == lang,
+                                onClick = { viewModel.setLanguage(lang) },
+                                label = { Text(lang.label) },
+                                modifier = Modifier.testTag("lang_${lang.name}")
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // 2. Safety Section (Moved from Safety Center into Settings)
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = strings.screenSafety.uppercase(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
+            CompanionCard {
+                // Activity (Insights + History + Notifications)
+                SettingsNavRow(
+                    title = strings.screenActivity,
+                    subtitle = strings.descActivityMerged,
+                    icon = Icons.Rounded.BarChart,
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    onClick = { onNavigate(NavRoutes.ACTIVITY) },
+                    modifier = Modifier.testTag("settings_activity_row")
                 )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+
+                // Replay App Guide
+                SettingsNavRow(
+                    title = strings.viewOnboardingBtn,
+                    subtitle = strings.replayOnboardingExplain,
+                    icon = Icons.Rounded.PlayCircleOutline,
+                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    onClick = { viewModel.reopenOnboarding() },
+                    modifier = Modifier.testTag("settings_replay_onboarding_btn")
+                )
+            }
+        }
+
+        // SECTION 2: EMERGENCY AND SAFETY
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader(
+                    title = strings.settingsSafetyTitle,
+                    subtitle = strings.settingsSafetyExplain
+                )
+
                 CompanionCard(
                     containerColor = if (state.preferences.isAutomationPaused) StatusAmber.copy(alpha = 0.10f)
                     else MaterialTheme.colorScheme.surface
                 ) {
+                    // Emergency Contacts
+                    SettingsNavRow(
+                        title = strings.navContacts,
+                        subtitle = "$emergencyCount ${strings.homeCardContactsSubSuffix}",
+                        icon = Icons.Rounded.Shield,
+                        accentColor = StatusEmerald,
+                        onClick = { onNavigate(NavRoutes.CONTACTS) },
+                        modifier = Modifier.testTag("settings_contacts_row")
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
                     // Global Automation Pause
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -174,7 +231,8 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.globalPauseTitle, style = MaterialTheme.typography.titleMedium)
+                            Text(strings.globalPauseTitle, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(2.dp))
                             Text(
                                 if (state.preferences.isAutomationPaused) strings.globalPauseOnSub
                                 else strings.globalPauseOffSub,
@@ -203,11 +261,17 @@ fun SettingsScreen(
                     val prevName = prevProfile?.let { strings.localizedProfileName(it) } ?: "Personal"
 
                     Text(strings.manualOverrideTitle, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "${strings.currentSimStatePrefix}: $activeName • $soundName",
+                        strings.manualOverrideExplain,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "${strings.currentSimStatePrefix}: $activeName • $soundName",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(Modifier.height(8.dp))
                     FlowRow(
@@ -226,6 +290,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = { viewModel.restorePreviousPhoneState() },
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("restore_previous_state_button")
@@ -240,7 +305,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
 
-                    // Conflict Check & Emergency Access Test
+                    // Conflict Check
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -256,7 +321,13 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.titleSmall
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.conflictCheckExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
                     if (conflicts.isEmpty()) {
                         Text(
                             strings.noConflictsMsg,
@@ -268,11 +339,7 @@ fun SettingsScreen(
                             val aName = strings.localizedRoutineName(a)
                             val bName = strings.localizedRoutineName(b)
                             Text(
-                                text = if (strings.isArabic) {
-                                    "• يتقاطع '$aName' (P${a.priority}) مع '$bName' (P${b.priority})."
-                                } else {
-                                    "• '$aName' (P${a.priority}) overlaps with '$bName' (P${b.priority})."
-                                },
+                                text = strings.conflictPromptSentence(listOf(aName, bName)),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber
                             )
@@ -290,7 +357,20 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    // Emergency Access Test
+                    Text(strings.emergencyTestTitle, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.emergencyTestExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
                     val emergency = state.contacts.firstOrNull { it.priorityLevel == ContactPriority.EMERGENCY }
                     OutlinedButton(
                         onClick = {
@@ -320,169 +400,244 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Appearance
+        // SECTION 3: AUTOMATION
         item {
-            CompanionCard {
-                Text(strings.appearanceTitle, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeMode.entries.forEach { mode ->
-                        FilterChip(
-                            selected = state.preferences.themeMode == mode,
-                            onClick = { viewModel.setThemeMode(mode) },
-                            label = { Text(strings.themeModeLabel(mode)) },
-                            modifier = Modifier.testTag("theme_${mode.name}")
-                        )
-                    }
-                }
-            }
-        }
-
-        // 4. Language (English / Arabic RTL)
-        item {
-            CompanionCard {
-                Text(strings.languageTitle, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    strings.languageSub,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader(
+                    title = strings.settingsAutomationTitle,
+                    subtitle = strings.settingsAutomationExplain
                 )
-                Spacer(Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppLanguage.entries.forEach { lang ->
-                        FilterChip(
-                            selected = state.preferences.language == lang,
-                            onClick = { viewModel.setLanguage(lang) },
-                            label = { Text(lang.label) },
-                            modifier = Modifier.testTag("lang_${lang.name}")
-                        )
-                    }
-                }
-            }
-        }
 
-        // 5. Automation Preferences
-        item {
-            CompanionCard {
-                Text(strings.automationPrefsTitle, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        strings.confirmImportantLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = state.preferences.requireConfirmationForImportantActions,
-                        onCheckedChange = { viewModel.setRequireConfirmation(it) }
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(strings.defaultProfileLabel, style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    state.profiles.forEach { p ->
-                        FilterChip(
-                            selected = state.preferences.defaultProfileId == p.id,
-                            onClick = { viewModel.setDefaultProfileId(p.id) },
-                            label = { Text(strings.localizedProfileName(p)) }
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(strings.conflictPolicyLabel, style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ConflictResolutionPolicy.entries.forEach { policy ->
-                        FilterChip(
-                            selected = state.preferences.conflictPolicy == policy,
-                            onClick = { viewModel.setConflictPolicy(policy) },
-                            label = { Text(strings.conflictPolicyLabel(policy)) }
-                        )
-                    }
-                }
-            }
-        }
-
-        // 6. Privacy Disclosure
-        item {
-            CompanionCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        strings.privacyTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    SimulatedDemoBadge(strings.simulatedChip)
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = strings.privacyBody,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // 7. Demo Management & Replay Onboarding
-        item {
-            CompanionCard {
-                Text(strings.demoMgmtTitle, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = if (strings.isArabic) {
-                        "${state.profiles.size} أوضاع • ${state.routines.size} روتينات • ${state.contacts.size} جهات • ${state.activityEvents.size} أحداث"
-                    } else {
-                        "${state.profiles.size} profiles • ${state.routines.size} routines • ${state.contacts.size} contacts • ${state.activityEvents.size} events"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(10.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(onClick = { viewModel.restoreDefaultProfiles() }) {
-                        Text(strings.restoreDefaultsBtn)
-                    }
-                    OutlinedButton(onClick = { viewModel.resetDemoRoutines() }) {
-                        Text(strings.resetDemoRoutinesBtn)
-                    }
-                    Button(
-                        onClick = { showResetConfirm = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.testTag("settings_reset_demo_btn")
+                CompanionCard {
+                    // Confirm Important Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(strings.resetDemoDataBtn)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(strings.confirmImportantLabel, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                strings.confirmImportantExplain,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = state.preferences.requireConfirmationForImportantActions,
+                            onCheckedChange = { viewModel.setRequireConfirmation(it) }
+                        )
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { viewModel.reopenOnboarding() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("settings_replay_onboarding_btn")
-                ) {
-                    Text(strings.viewOnboardingBtn)
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    // Default Profile
+                    Text(strings.defaultProfileLabel, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.defaultProfileExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        state.profiles.forEach { p ->
+                            FilterChip(
+                                selected = state.preferences.defaultProfileId == p.id,
+                                onClick = { viewModel.setDefaultProfileId(p.id) },
+                                label = { Text(strings.localizedProfileName(p)) }
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    // When routines overlap
+                    Text(strings.conflictPolicyLabel, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        strings.conflictPolicyExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ConflictResolutionPolicy.entries.forEach { policy ->
+                            FilterChip(
+                                selected = state.preferences.conflictPolicy == policy,
+                                onClick = { viewModel.setConflictPolicy(policy) },
+                                label = { Text(strings.conflictPolicyLabel(policy)) }
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // 8. About
+        // SECTION 4: ADVANCED (Collapsed Expandable Section)
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader(
+                    title = strings.settingsAdvancedTitle,
+                    subtitle = strings.settingsAdvancedExplain
+                )
+
+                CompanionCard {
+                    Surface(
+                        onClick = { showAdvancedSection = !showAdvancedSection },
+                        color = Color.Transparent,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_advanced_toggle")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Surface(
+                                color = StatusIndigo.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Science,
+                                        contentDescription = null,
+                                        tint = StatusIndigo,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = strings.settingsAdvancedTitle,
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                                Text(
+                                    text = strings.descAdvanced,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = if (showAdvancedSection) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(visible = showAdvancedSection) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(top = 10.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+
+                            // Context Awareness, Demo Playground, Simulation Engine
+                            SettingsNavRow(
+                                title = strings.screenAdvanced,
+                                subtitle = strings.descAdvanced,
+                                icon = Icons.Rounded.Science,
+                                accentColor = StatusIndigo,
+                                onClick = { onNavigate(NavRoutes.ADVANCED) },
+                                modifier = Modifier.testTag("settings_advanced_row")
+                            )
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                            // Privacy & Demo Boundaries
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    strings.privacyTitle,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                SimulatedDemoBadge(strings.demoBadge)
+                            }
+                            Text(
+                                text = strings.privacyExplain,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = strings.privacyBody,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                            // Demo Data Resets
+                            Text(strings.demoMgmtTitle, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = strings.demoMgmtExplain,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = if (strings.isArabic) {
+                                    "${state.profiles.size} أوضاع • ${state.routines.size} روتينات • ${state.contacts.size} جهات • ${state.activityEvents.size} أحداث"
+                                } else {
+                                    "${state.profiles.size} profiles • ${state.routines.size} routines • ${state.contacts.size} contacts • ${state.activityEvents.size} events"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(onClick = { viewModel.restoreDefaultProfiles() }) {
+                                    Text(strings.restoreDefaultsBtn)
+                                }
+                                OutlinedButton(onClick = { viewModel.resetDemoRoutines() }) {
+                                    Text(strings.resetDemoRoutinesBtn)
+                                }
+                                Button(
+                                    onClick = { showResetConfirm = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                    modifier = Modifier.testTag("settings_reset_demo_btn")
+                                ) {
+                                    Text(strings.resetDemoDataBtn)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // About Card
         item {
             CompanionCard {
-                Text(strings.aboutTitle, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(6.dp))
-                Text(strings.appName, style = MaterialTheme.typography.titleSmall)
+                Text(strings.aboutTitle, style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    strings.aboutExplain,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(strings.appName, style = MaterialTheme.typography.titleMedium)
                 Text(
                     "\"${strings.tagline}\"",
                     style = MaterialTheme.typography.bodySmall,
@@ -543,13 +698,13 @@ private fun SettingsNavRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Surface(
                 color = accentColor.copy(alpha = 0.14f),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {

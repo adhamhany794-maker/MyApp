@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.PauseCircleOutline
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.HorizontalDivider
@@ -25,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +39,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.models.ContactPriority
@@ -44,6 +46,7 @@ import com.example.ui.components.CompanionCard
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.FeatureInfoButton
 import com.example.ui.components.SectionHeader
+import com.example.ui.components.SimulatedDemoBadge
 import com.example.ui.navigation.NavRoutes
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusEmerald
@@ -58,7 +61,7 @@ import com.example.viewmodels.SmartCompanionViewModel
 fun HomeDashboardScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    @Suppress("UNUSED_PARAMETER") viewModel: SmartCompanionViewModel,
+    viewModel: SmartCompanionViewModel,
     onNavigate: (String) -> Unit
 ) {
     var activeHelpTopic by remember { mutableStateOf<FeatureHelpTopic?>(null) }
@@ -73,55 +76,86 @@ fun HomeDashboardScreen(
         val nextText = nextRoutine?.let {
             "${strings.localizedRoutineName(it)} (${it.scheduleStartTime})"
         } ?: "لا يوجد روتين مجدول"
-        if (state.preferences.isAutomationPaused) {
-            "الأتمتة متوقفة مؤقتاً • ${enabledRoutines.size} من ${state.routines.size} مفعّل"
-        } else {
-            "${enabledRoutines.size} من ${state.routines.size} مفعّل • التالي: $nextText"
-        }
+        "${enabledRoutines.size} من ${state.routines.size} مفعّل • التالي: $nextText"
     } else {
         val nextText = nextRoutine?.let {
             "${strings.localizedRoutineName(it)} (${it.scheduleStartTime})"
         } ?: "None scheduled"
-        if (state.preferences.isAutomationPaused) {
-            "Automation paused • ${enabledRoutines.size} of ${state.routines.size} active"
-        } else {
-            "${enabledRoutines.size} of ${state.routines.size} active • Next: $nextText"
-        }
+        "${enabledRoutines.size} of ${state.routines.size} active • Next: $nextText"
     }
 
-    val emergencySummary = if (strings.isArabic) {
-        "$emergencyCount ${strings.homeCardContactsSubSuffix}"
-    } else {
-        "$emergencyCount ${strings.homeCardContactsSubSuffix}"
-    }
+    val emergencySummary = "$emergencyCount ${strings.homeCardContactsSubSuffix}"
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .testTag("home_screen_list"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // 1. Short Headline + Subtitle (Product Idea)
+        // Calm Demo / simulation indicator + optional Pause notice ONLY if user paused automation
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = strings.homeHeadline,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f)
+                    SimulatedDemoBadge(
+                        text = strings.demoBadge,
+                        modifier = Modifier.testTag("home_demo_badge")
                     )
                     FeatureInfoButton(
                         contentDescription = strings.featureHelpContentDesc,
                         onClick = { activeHelpTopic = FeatureHelpTopic.HOME_DASHBOARD }
                     )
                 }
+
+                if (state.preferences.isAutomationPaused) {
+                    Surface(
+                        color = StatusAmber.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, StatusAmber.copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_paused_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PauseCircleOutline,
+                                contentDescription = strings.automationPaused,
+                                tint = StatusAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = strings.automationPaused,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.toggleGlobalAutomationPause() }) {
+                                Text(strings.resumeAutomation)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 1. Large Bold Headline + Subtitle (Product Idea & Emergency Promise)
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = strings.homeHeadline,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
                 Text(
                     text = strings.homeSubtitle,
                     style = MaterialTheme.typography.bodyMedium,
@@ -130,9 +164,9 @@ fun HomeDashboardScreen(
             }
         }
 
-        // 2. Three Primary Action Cards
+        // 2. Three Clean Action Cards
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 HomeFeatureCard(
                     title = strings.homeCardAssistantTitle,
                     subtitle = strings.homeCardAssistantSub,
@@ -146,7 +180,7 @@ fun HomeDashboardScreen(
                     title = strings.homeCardRoutinesTitle,
                     subtitle = routinesSummary,
                     icon = Icons.Rounded.Schedule,
-                    accent = if (state.preferences.isAutomationPaused) StatusAmber else MaterialTheme.colorScheme.secondary,
+                    accent = MaterialTheme.colorScheme.tertiary,
                     onClick = { onNavigate(NavRoutes.ROUTINES) },
                     modifier = Modifier.testTag("home_card_routines")
                 )
@@ -162,7 +196,7 @@ fun HomeDashboardScreen(
             }
         }
 
-        // 3. Small Recent Activity (Last 3 Events)
+        // 3. Recent Activity (Last 3 Events)
         item {
             Spacer(Modifier.height(2.dp))
             SectionHeader(
@@ -170,7 +204,7 @@ fun HomeDashboardScreen(
                 actionLabel = strings.viewAllLabel,
                 onActionClick = { onNavigate(NavRoutes.ACTIVITY) }
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             CompanionCard(modifier = Modifier.testTag("home_recent_activity_card")) {
                 val recent = state.activityEvents.take(3)
                 if (recent.isEmpty()) {
@@ -193,13 +227,13 @@ fun HomeDashboardScreen(
                                         .fillMaxWidth()
                                         .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.secondary)
+                                            .background(MaterialTheme.colorScheme.primary)
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
@@ -263,7 +297,7 @@ private fun HomeFeatureCard(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {

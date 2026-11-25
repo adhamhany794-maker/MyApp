@@ -873,6 +873,30 @@ class SmartCompanionViewModel(
         }
     }
 
+    fun resetFocusSession() {
+        val cur = _activeFocus.value
+        if (!cur.isActive) return
+        _activeFocus.value = cur.copy(
+            remainingSeconds = cur.totalSeconds,
+            isPaused = true,
+            simulatedInterruptionsBlocked = 0
+        )
+        viewModelScope.launch {
+            repository.logEvent(
+                title = "Focus Timer Reset",
+                category = EventCategory.FOCUS,
+                triggerSource = "Focus Timer",
+                result = "Reset to ${TimeUtils.formatTimer(cur.totalSeconds)}",
+                explanation = "User reset the focus countdown timer back to full duration.",
+                relatedProfileName = cur.profileName
+            )
+            showBanner(
+                if (isArabic()) "تمت إعادة ضبط مؤقت التركيز"
+                else "Focus timer reset"
+            )
+        }
+    }
+
     fun simulateBlockedInterruptionDuringFocus() {
         val cur = _activeFocus.value
         if (!cur.isActive) return

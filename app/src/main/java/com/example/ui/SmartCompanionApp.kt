@@ -1,12 +1,27 @@
 package com.example.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Schedule
@@ -18,22 +33,25 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +63,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ui.components.ConflictResolutionDialog
+import com.example.ui.components.SmartCompanionBackground
 import com.example.ui.navigation.NavRoutes
 import com.example.ui.screens.ActivityScreen
 import com.example.ui.screens.AdvancedScreen
@@ -58,7 +77,10 @@ import com.example.ui.screens.RoutinesScreen
 import com.example.ui.screens.RuleBuilderScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SimulationEngineScreen
+import com.example.ui.theme.DarkSurfaceElevated
+import com.example.ui.theme.LocalIsDarkTheme
 import com.example.ui.theme.SmartCompanionTheme
+import com.example.utils.AppStrings
 import com.example.utils.stringsFor
 import com.example.viewmodels.SmartCompanionViewModel
 
@@ -82,232 +104,344 @@ fun SmartCompanionApp(
         themeMode = state.preferences.themeMode,
         language = state.preferences.language
     ) {
-        if (!state.isReady) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        SmartCompanionBackground {
+            if (!state.isReady) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@SmartCompanionBackground
             }
-            return@SmartCompanionTheme
-        }
 
-        if (!state.preferences.hasCompletedOnboarding) {
-            OnboardingScreen(
-                strings = strings,
-                onFinishOnboarding = { viewModel.completeOnboarding() }
+            if (!state.preferences.hasCompletedOnboarding) {
+                OnboardingScreen(
+                    strings = strings,
+                    onFinishOnboarding = { viewModel.completeOnboarding() }
+                )
+                return@SmartCompanionBackground
+            }
+
+            val navController = rememberNavController()
+            val backStackEntry by navController.currentBackStackEntryAsState()
+            val currentRoute = backStackEntry?.destination?.route ?: NavRoutes.HOME
+            val snackbarHostState = remember { SnackbarHostState() }
+
+            LaunchedEffect(state.feedbackBanner) {
+                val msg = state.feedbackBanner
+                if (msg != null) {
+                    snackbarHostState.showSnackbar(msg)
+                    viewModel.clearFeedbackBanner()
+                }
+            }
+
+            // Strictly 4 primary bottom navigation tabs: Home, Routines, Assistant, Settings
+            val mainTabs = listOf(
+                BottomNavTab(NavRoutes.HOME, strings.navHome, Icons.Rounded.Home),
+                BottomNavTab(NavRoutes.ROUTINES, strings.navRoutines, Icons.Rounded.Schedule),
+                BottomNavTab(NavRoutes.ASSISTANT, strings.navAssistant, Icons.Rounded.AutoAwesome),
+                BottomNavTab(NavRoutes.SETTINGS, strings.navSettings, Icons.Rounded.Settings)
             )
-            return@SmartCompanionTheme
-        }
+            val mainRouteSet = mainTabs.map { it.route }.toSet()
+            val isMainTab = currentRoute in mainRouteSet
 
-        val navController = rememberNavController()
-        val backStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = backStackEntry?.destination?.route ?: NavRoutes.HOME
-        val snackbarHostState = remember { SnackbarHostState() }
-
-        LaunchedEffect(state.feedbackBanner) {
-            val msg = state.feedbackBanner
-            if (msg != null) {
-                snackbarHostState.showSnackbar(msg)
-                viewModel.clearFeedbackBanner()
+            fun navigateTo(route: String, popUpToRoot: Boolean = false) {
+                navController.navigate(route) {
+                    if (popUpToRoot) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
             }
-        }
 
-        // Strictly 4 primary bottom navigation tabs: Home, Routines, Assistant, Settings
-        val mainTabs = listOf(
-            BottomNavTab(NavRoutes.HOME, strings.navHome, Icons.Rounded.Home),
-            BottomNavTab(NavRoutes.ROUTINES, strings.navRoutines, Icons.Rounded.Schedule),
-            BottomNavTab(NavRoutes.ASSISTANT, strings.navAssistant, Icons.Rounded.AutoAwesome),
-            BottomNavTab(NavRoutes.SETTINGS, strings.navSettings, Icons.Rounded.Settings)
-        )
-        val mainRouteSet = mainTabs.map { it.route }.toSet()
-        val isMainTab = currentRoute in mainRouteSet
+            val topBarTitle = when {
+                currentRoute == NavRoutes.HOME -> strings.appName
+                currentRoute == NavRoutes.ROUTINES -> strings.navRoutines
+                currentRoute == NavRoutes.ASSISTANT -> strings.navAssistant
+                currentRoute == NavRoutes.SETTINGS -> strings.navSettings
+                currentRoute == NavRoutes.CONTACTS -> strings.navContacts
+                currentRoute == NavRoutes.ACTIVITY -> strings.screenActivity
+                currentRoute == NavRoutes.ADVANCED -> strings.screenAdvanced
+                currentRoute == NavRoutes.PROFILES -> strings.screenProfiles
+                currentRoute == NavRoutes.FOCUS -> strings.screenFocus
+                currentRoute == NavRoutes.SIMULATION -> strings.screenSimulation
+                currentRoute.startsWith(NavRoutes.RULE_BUILDER) -> strings.screenRuleBuilder
+                else -> strings.appName
+            }
 
-        fun navigateTo(route: String, popUpToRoot: Boolean = false) {
-            navController.navigate(route) {
-                if (popUpToRoot) {
-                    popUpTo(navController.graph.findStartDestination().id) {
-                        saveState = true
+            Scaffold(
+                containerColor = Color.Transparent,
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+                topBar = {
+                    if (!isMainTab) {
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Text(
+                                    text = topBarTitle,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = { navController.popBackStack() },
+                                    modifier = Modifier.testTag("top_back_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                        contentDescription = strings.backDesc
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = Color.Transparent
+                            )
+                        )
+                    }
+                },
+                bottomBar = {
+                    if (isMainTab) {
+                        FloatingPillBottomBar(
+                            leftTabs = mainTabs.subList(0, 2),
+                            rightTabs = mainTabs.subList(2, 4),
+                            currentRoute = currentRoute,
+                            strings = strings,
+                            onSelectTab = { route -> navigateTo(route, popUpToRoot = true) },
+                            onNewRoutineClick = {
+                                viewModel.clearAssistantDraft()
+                                navigateTo(NavRoutes.ruleBuilderRoute())
+                            }
+                        )
+                    } else {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
-                launchSingleTop = true
-                restoreState = true
+            ) { innerPadding ->
+                NavHost(
+                    navController = navController,
+                    startDestination = NavRoutes.HOME,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    composable(NavRoutes.HOME) {
+                        HomeDashboardScreen(
+                            state = state,
+                            strings = strings,
+                            viewModel = viewModel,
+                            onNavigate = { route -> navigateTo(route) }
+                        )
+                    }
+                    composable(NavRoutes.ROUTINES) {
+                        RoutinesScreen(
+                            state = state,
+                            strings = strings,
+                            viewModel = viewModel,
+                            onCreateRoutine = {
+                                viewModel.clearAssistantDraft()
+                                navigateTo(NavRoutes.ruleBuilderRoute())
+                            },
+                            onEditRoutine = { id -> navigateTo(NavRoutes.ruleBuilderRoute(id)) },
+                            onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) },
+                            onOpenProfiles = { navigateTo(NavRoutes.PROFILES) },
+                            onOpenFocusSessions = { navigateTo(NavRoutes.FOCUS) }
+                        )
+                    }
+                    composable(NavRoutes.ASSISTANT) {
+                        AssistantScreen(
+                            state = state,
+                            strings = strings,
+                            viewModel = viewModel,
+                            onEditProposalInBuilder = { navigateTo(NavRoutes.ruleBuilderRoute()) }
+                        )
+                    }
+                    composable(NavRoutes.SETTINGS) {
+                        SettingsScreen(
+                            state = state,
+                            strings = strings,
+                            viewModel = viewModel,
+                            onNavigate = { route -> navigateTo(route) }
+                        )
+                    }
+                    composable(NavRoutes.CONTACTS) {
+                        ContactsScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(NavRoutes.ACTIVITY) {
+                        ActivityScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(NavRoutes.ADVANCED) {
+                        AdvancedScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(NavRoutes.PROFILES) {
+                        ProfilesScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(NavRoutes.FOCUS) {
+                        FocusSessionsScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(NavRoutes.SIMULATION) {
+                        SimulationEngineScreen(state = state, strings = strings, viewModel = viewModel)
+                    }
+                    composable(
+                        route = "${NavRoutes.RULE_BUILDER}?routineId={routineId}",
+                        arguments = listOf(
+                            navArgument("routineId") {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            }
+                        )
+                    ) { entry ->
+                        val routineId = entry.arguments?.getString("routineId")
+                        val existing = state.routines.firstOrNull { it.id == routineId }
+                        RuleBuilderScreen(
+                            existingRoutine = existing,
+                            strings = strings,
+                            state = state,
+                            viewModel = viewModel,
+                            onSaved = { navController.popBackStack() }
+                        )
+                    }
+                }
+            }
+
+            state.pendingConflict?.let { conflictPrompt ->
+                ConflictResolutionDialog(
+                    prompt = conflictPrompt,
+                    strings = strings,
+                    onSelectRoutine = { chosen -> viewModel.resolvePendingConflict(chosen) },
+                    onKeepCurrent = { viewModel.resolvePendingConflict(null) }
+                )
             }
         }
+    }
+}
 
-        val topBarTitle = when {
-            currentRoute == NavRoutes.HOME -> strings.appName
-            currentRoute == NavRoutes.ROUTINES -> strings.navRoutines
-            currentRoute == NavRoutes.ASSISTANT -> strings.navAssistant
-            currentRoute == NavRoutes.SETTINGS -> strings.navSettings
-            currentRoute == NavRoutes.CONTACTS -> strings.navContacts
-            currentRoute == NavRoutes.ACTIVITY -> strings.screenActivity
-            currentRoute == NavRoutes.ADVANCED -> strings.screenAdvanced
-            currentRoute == NavRoutes.PROFILES -> strings.screenProfiles
-            currentRoute == NavRoutes.FOCUS -> strings.screenFocus
-            currentRoute == NavRoutes.SIMULATION -> strings.screenSimulation
-            currentRoute.startsWith(NavRoutes.RULE_BUILDER) -> strings.screenRuleBuilder
-            else -> strings.appName
-        }
+@Composable
+private fun FloatingPillBottomBar(
+    leftTabs: List<BottomNavTab>,
+    rightTabs: List<BottomNavTab>,
+    currentRoute: String,
+    strings: AppStrings,
+    onSelectTab: (String) -> Unit,
+    onNewRoutineClick: () -> Unit
+) {
+    val isDark = LocalIsDarkTheme.current
+    val pillColor = if (isDark) DarkSurfaceElevated else Color.White
+    val pillBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
 
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = topBarTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        if (!isMainTab) {
-                            IconButton(
-                                onClick = { navController.popBackStack() },
-                                modifier = Modifier.testTag("top_back_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = strings.backDesc
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(34.dp),
+            color = pillColor,
+            border = pillBorder,
+            shadowElevation = if (isDark) 4.dp else 10.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                leftTabs.forEach { tab ->
+                    PillNavItem(
+                        tab = tab,
+                        selected = currentRoute == tab.route,
+                        onClick = { onSelectTab(tab.route) },
+                        modifier = Modifier.weight(1f)
                     )
-                )
-            },
-            bottomBar = {
-                if (isMainTab) {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 0.dp,
-                        windowInsets = WindowInsets.navigationBars
+                }
+
+                // Center round orange "+" button for New routine
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .minimumInteractiveComponentSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        onClick = onNewRoutineClick,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .testTag("nav_new_routine")
                     ) {
-                        mainTabs.forEach { tab ->
-                            val selected = currentRoute == tab.route
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { navigateTo(tab.route, popUpToRoot = true) },
-                                icon = { Icon(tab.icon, contentDescription = tab.label) },
-                                label = {
-                                    Text(
-                                        text = tab.label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                                ),
-                                modifier = Modifier.testTag("nav_${tab.route}")
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = strings.navNewRoutine,
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
-                } else {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
-            }
-        ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = NavRoutes.HOME,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                composable(NavRoutes.HOME) {
-                    HomeDashboardScreen(
-                        state = state,
-                        strings = strings,
-                        viewModel = viewModel,
-                        onNavigate = { route -> navigateTo(route) }
-                    )
-                }
-                composable(NavRoutes.ROUTINES) {
-                    RoutinesScreen(
-                        state = state,
-                        strings = strings,
-                        viewModel = viewModel,
-                        onCreateRoutine = {
-                            viewModel.clearAssistantDraft()
-                            navigateTo(NavRoutes.ruleBuilderRoute())
-                        },
-                        onEditRoutine = { id -> navigateTo(NavRoutes.ruleBuilderRoute(id)) },
-                        onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) },
-                        onOpenProfiles = { navigateTo(NavRoutes.PROFILES) },
-                        onOpenFocusSessions = { navigateTo(NavRoutes.FOCUS) }
-                    )
-                }
-                composable(NavRoutes.ASSISTANT) {
-                    AssistantScreen(
-                        state = state,
-                        strings = strings,
-                        viewModel = viewModel,
-                        onEditProposalInBuilder = { navigateTo(NavRoutes.ruleBuilderRoute()) }
-                    )
-                }
-                composable(NavRoutes.SETTINGS) {
-                    SettingsScreen(
-                        state = state,
-                        strings = strings,
-                        viewModel = viewModel,
-                        onNavigate = { route -> navigateTo(route) }
-                    )
-                }
-                composable(NavRoutes.CONTACTS) {
-                    ContactsScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.ACTIVITY) {
-                    ActivityScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.ADVANCED) {
-                    AdvancedScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.PROFILES) {
-                    ProfilesScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.FOCUS) {
-                    FocusSessionsScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(NavRoutes.SIMULATION) {
-                    SimulationEngineScreen(state = state, strings = strings, viewModel = viewModel)
-                }
-                composable(
-                    route = "${NavRoutes.RULE_BUILDER}?routineId={routineId}",
-                    arguments = listOf(
-                        navArgument("routineId") {
-                            type = NavType.StringType
-                            nullable = true
-                            defaultValue = null
-                        }
-                    )
-                ) { entry ->
-                    val routineId = entry.arguments?.getString("routineId")
-                    val existing = state.routines.firstOrNull { it.id == routineId }
-                    RuleBuilderScreen(
-                        existingRoutine = existing,
-                        strings = strings,
-                        state = state,
-                        viewModel = viewModel,
-                        onSaved = { navController.popBackStack() }
-                    )
-                }
-            }
-        }
 
-        state.pendingConflict?.let { conflictPrompt ->
-            ConflictResolutionDialog(
-                prompt = conflictPrompt,
-                strings = strings,
-                onSelectRoutine = { chosen -> viewModel.resolvePendingConflict(chosen) },
-                onKeepCurrent = { viewModel.resolvePendingConflict(null) }
-            )
+                rightTabs.forEach { tab ->
+                    PillNavItem(
+                        tab = tab,
+                        selected = currentRoute == tab.route,
+                        onClick = { onSelectTab(tab.route) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PillNavItem(
+    tab: BottomNavTab,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val tint = if (selected) activeColor else inactiveColor
+
+    Column(
+        modifier = modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                if (selected) activeColor.copy(alpha = 0.12f) else Color.Transparent
+            )
+            .clickable(role = Role.Tab, onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 4.dp)
+            .testTag("nav_${tab.route}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = tab.icon,
+            contentDescription = tab.label,
+            tint = tint,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = tab.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = tint,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

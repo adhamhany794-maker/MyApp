@@ -34,28 +34,29 @@ fun buildAppTypography(isArabic: Boolean): Typography {
         displaySmall = TextStyle(
             fontFamily = bodyFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 32.sp,
-            lineHeight = 38.sp,
-            letterSpacing = (-0.5).sp
+            fontSize = 36.sp,
+            lineHeight = 42.sp,
+            letterSpacing = (-0.6).sp
         ),
         headlineMedium = TextStyle(
             fontFamily = bodyFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 24.sp,
-            lineHeight = 30.sp,
-            letterSpacing = (-0.25).sp
+            fontSize = 28.sp,
+            lineHeight = 34.sp,
+            letterSpacing = (-0.4).sp
         ),
         headlineSmall = TextStyle(
             fontFamily = bodyFamily,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 20.sp,
-            lineHeight = 26.sp
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            lineHeight = 30.sp,
+            letterSpacing = (-0.3).sp
         ),
         titleLarge = TextStyle(
             fontFamily = bodyFamily,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-            lineHeight = 24.sp
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            lineHeight = 26.sp
         ),
         titleMedium = TextStyle(
             fontFamily = bodyFamily,
@@ -65,7 +66,7 @@ fun buildAppTypography(isArabic: Boolean): Typography {
         ),
         titleSmall = TextStyle(
             fontFamily = bodyFamily,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp,
             lineHeight = 20.sp
         ),
@@ -84,8 +85,8 @@ fun buildAppTypography(isArabic: Boolean): Typography {
         bodySmall = TextStyle(
             fontFamily = bodyFamily,
             fontWeight = FontWeight.Normal,
-            fontSize = 12.sp,
-            lineHeight = 17.sp
+            fontSize = 13.sp,
+            lineHeight = 18.sp
         ),
         labelLarge = TextStyle(
             fontFamily = bodyFamily,
@@ -104,7 +105,7 @@ fun buildAppTypography(isArabic: Boolean): Typography {
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
             lineHeight = 14.sp,
-            letterSpacing = 0.4.sp
+            letterSpacing = 0.2.sp
         )
     )
 }

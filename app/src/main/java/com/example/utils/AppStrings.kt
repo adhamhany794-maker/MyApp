@@ -31,6 +31,7 @@ abstract class AppStrings {
     abstract val navHome: String
     abstract val navAssistant: String
     abstract val navRoutines: String
+    abstract val navNewRoutine: String
     abstract val navContacts: String
     abstract val navInsights: String
     abstract val navSettings: String
@@ -175,6 +176,14 @@ abstract class AppStrings {
     abstract val stepActionsTitle: String
     abstract val stepExceptionsTitle: String
     abstract val stepReviewTitle: String
+    abstract val builderRowWhenTitle: String
+    abstract val builderRowOnlyIfTitle: String
+    abstract val builderRowDoThisTitle: String
+    abstract val builderRowExceptTitle: String
+    abstract val builderDoneBtn: String
+    abstract val priorityHighLabel: String
+    abstract val priorityMediumLabel: String
+    abstract val priorityLowLabel: String
     abstract val advancedRuleOptions: String
     abstract val alwaysRunNote: String
 
@@ -322,8 +331,10 @@ abstract class AppStrings {
     abstract val focusProfileLabel: String
     abstract val autoActivateProfile: String
     abstract val startFocusBtn: String
+    abstract val playBtn: String
     abstract val pauseBtn: String
     abstract val resumeBtn: String
+    abstract val resetBtn: String
     abstract val endBtn: String
     abstract val simBlockedDistractionBtn: String
     abstract val sessionSummaryTitle: String
@@ -376,21 +387,40 @@ abstract class AppStrings {
     abstract val resetDemoRoutinesBtn: String
     abstract val resetEntireAppBtn: String
 
-    // Settings
+    // Settings Grouped Sections & 1-Sentence Plain Explanations
+    abstract val settingsGeneralTitle: String
+    abstract val settingsGeneralExplain: String
+    abstract val settingsSafetyTitle: String
+    abstract val settingsSafetyExplain: String
+    abstract val settingsAutomationTitle: String
+    abstract val settingsAutomationExplain: String
+    abstract val settingsAdvancedTitle: String
+    abstract val settingsAdvancedExplain: String
     abstract val appearanceTitle: String
+    abstract val appearanceExplain: String
     abstract val languageTitle: String
     abstract val languageSub: String
+    abstract val replayOnboardingExplain: String
+    abstract val manualOverrideExplain: String
+    abstract val conflictCheckExplain: String
+    abstract val emergencyTestExplain: String
     abstract val automationPrefsTitle: String
     abstract val pauseAllAutomationLabel: String
     abstract val confirmImportantLabel: String
+    abstract val confirmImportantExplain: String
     abstract val defaultProfileLabel: String
+    abstract val defaultProfileExplain: String
     abstract val conflictPolicyLabel: String
+    abstract val conflictPolicyExplain: String
     abstract val privacyTitle: String
+    abstract val privacyExplain: String
     abstract val privacyBody: String
     abstract val demoMgmtTitle: String
+    abstract val demoMgmtExplain: String
     abstract val resetDemoDataBtn: String
     abstract val viewOnboardingBtn: String
     abstract val aboutTitle: String
+    abstract val aboutExplain: String
     abstract val aboutVersionLine: String
 
     // Conflict Dialog
@@ -400,6 +430,22 @@ abstract class AppStrings {
 
     // Playground
     abstract val playgroundSubtitle: String
+
+    fun priorityTierLabel(priority: Int): String = when {
+        priority >= 8 -> priorityHighLabel
+        priority >= 5 -> priorityMediumLabel
+        else -> priorityLowLabel
+    }
+
+    fun conflictPromptSentence(names: List<String>): String {
+        return when {
+            names.size >= 2 && isArabic -> "يتعارض ${names[0]} مع ${names[1]}. أيهما يجب أن يربح؟"
+            names.size >= 2 -> "${names[0]} and ${names[1]} overlap. Which one should win?"
+            names.size == 1 && isArabic -> "هل تريد تشغيل ${names[0]} الآن؟"
+            names.size == 1 -> "Run ${names[0]} now?"
+            else -> conflictDefaultExplain
+        }
+    }
 
     fun soundModeLabel(mode: SoundMode): String = if (isArabic) {
         when (mode) {
@@ -621,12 +667,13 @@ private object EnglishAppStrings : AppStrings() {
     override val isArabic = false
     override val appName = "Smart Companion"
     override val tagline = "Stay focused without missing what matters."
-    override val demoBadge = "SIMULATED DEMO"
-    override val simulatedChip = "SIMULATED"
-    override val appEventChip = "APP STATE"
+    override val demoBadge = "Demo / simulation"
+    override val simulatedChip = "Demo / simulation"
+    override val appEventChip = "App update"
     override val navHome = "Home"
     override val navAssistant = "Assistant"
     override val navRoutines = "Routines"
+    override val navNewRoutine = "New routine"
     override val navContacts = "Emergency contacts"
     override val navInsights = "Insights"
     override val navSettings = "Settings"
@@ -698,15 +745,15 @@ private object EnglishAppStrings : AppStrings() {
     override val homeCardAssistantSub = "Describe a routine in plain language and review it before saving."
     override val homeCardRoutinesTitle = "My routines"
     override val homeCardContactsTitle = "Emergency contacts"
-    override val homeCardContactsSubSuffix = "chosen callers never silenced by any routine"
+    override val homeCardContactsSubSuffix = "protected — emergency contacts always get through"
     override val manageProfilesBtn = "Manage profiles"
     override val activitySubtitle = "Insights, event timeline, and notification analytics in one place."
     override val advancedSubtitle = "Simulated context signals, interactive demo scenarios, and rule engine."
-    override val settingsSubtitle = "Safety controls, emergency contacts, activity, language, and advanced tools."
+    override val settingsSubtitle = "Customize appearance, emergency safety, routines behavior, and advanced tools."
     override val settingsMoreTitle = "More"
-    override val descActivityMerged = "Insights, activity history, and notification intelligence."
-    override val descAdvanced = "Context Awareness, Demo Playground, and Simulation Engine."
-    override val descEmergencyContacts = "Manage callers who always get through any routine."
+    override val descActivityMerged = "See focus stats, past activity, and notification trends."
+    override val descAdvanced = "Test simulated context, demo scenarios, and the rule engine."
+    override val descEmergencyContacts = "Choose callers who always get through, even when your phone is silent."
     override val activeProfile = "Current Profile"
     override val switchProfilePrompt = "Switch profile:"
     override val simulatedPhoneStatus = "Phone Status"
@@ -755,12 +802,20 @@ private object EnglishAppStrings : AppStrings() {
     override val filterActiveRoutines = "Active"
     override val filterPausedRoutines = "Paused"
     override val stepWhenTitle = "When should it happen?"
-    override val stepConditionsTitle = "What conditions should apply?"
-    override val stepActionsTitle = "What actions should happen?"
-    override val stepExceptionsTitle = "Are there any exceptions?"
-    override val stepReviewTitle = "Review & Save Routine"
-    override val advancedRuleOptions = "Advanced rule options"
-    override val alwaysRunNote = "Optional — leave unchecked to run whenever the trigger fires."
+    override val stepConditionsTitle = "Only if these apply"
+    override val stepActionsTitle = "Do this automatically"
+    override val stepExceptionsTitle = "Except for these"
+    override val stepReviewTitle = "Name & save routine"
+    override val builderRowWhenTitle = "When"
+    override val builderRowOnlyIfTitle = "Only if"
+    override val builderRowDoThisTitle = "Do this"
+    override val builderRowExceptTitle = "Except"
+    override val builderDoneBtn = "Done"
+    override val priorityHighLabel = "High"
+    override val priorityMediumLabel = "Medium"
+    override val priorityLowLabel = "Low"
+    override val advancedRuleOptions = "Importance"
+    override val alwaysRunNote = "Optional — leave unchecked to run whenever the trigger happens."
     override val contactsPriorityExplain = "Emergency contacts always reach you even in Silent mode. High Priority callers depend on your active profile, and Normal contacts follow your current sound mode."
     override val emergencyTierTitle = "Emergency"
     override val highPriorityTierTitle = "High Priority"
@@ -818,7 +873,7 @@ private object EnglishAppStrings : AppStrings() {
     override val focusDurationLabel = "Focus Duration"
     override val ruleSummaryTitle = "Rule Summary"
     override val testRuleBtn = "Test Rule"
-    override val saveRuleBtn = "Save Rule"
+    override val saveRuleBtn = "Save Routine"
     override val errRuleNameRequired = "Please enter a routine name."
     override val errRuleActionRequired = "Select at least one action before continuing."
     override val simSubtitle = "Test triggers, conditions, priority conflicts, and interruptions against live app state."
@@ -893,8 +948,10 @@ private object EnglishAppStrings : AppStrings() {
     override val focusProfileLabel = "Focus Profile"
     override val autoActivateProfile = "Activate selected profile automatically"
     override val startFocusBtn = "Start Focus Session"
+    override val playBtn = "Play"
     override val pauseBtn = "Pause"
     override val resumeBtn = "Resume"
+    override val resetBtn = "Reset"
     override val endBtn = "End"
     override val simBlockedDistractionBtn = "Simulate Blocked Distraction"
     override val sessionSummaryTitle = "Session Summary"
@@ -940,24 +997,43 @@ private object EnglishAppStrings : AppStrings() {
     override val recoverySub = "All recovery actions ask for confirmation first."
     override val resetDemoRoutinesBtn = "Reset All Demo Routines"
     override val resetEntireAppBtn = "Reset Entire Demo Application"
+    override val settingsGeneralTitle = "General"
+    override val settingsGeneralExplain = "Manage how the app looks, which language it uses, and your activity logs."
+    override val settingsSafetyTitle = "Emergency and safety"
+    override val settingsSafetyExplain = "Keep emergency callers reachable and pause or undo routine changes anytime."
+    override val settingsAutomationTitle = "Automation"
+    override val settingsAutomationExplain = "Choose how routines behave by default and what happens when two overlap."
+    override val settingsAdvancedTitle = "Advanced"
+    override val settingsAdvancedExplain = "Developer simulation tools, demo data resets, and privacy boundaries."
     override val appearanceTitle = "Appearance"
+    override val appearanceExplain = "Switch between light mode, dark mode, or follow your device setting."
     override val languageTitle = "Language & Layout Direction"
-    override val languageSub = "Switching to العربية updates all copy and applies Right-to-Left (RTL) layout."
+    override val languageSub = "Change app text between English and Arabic with automatic right-to-left layout."
+    override val replayOnboardingExplain = "Revisit the 3-step introduction to see how routines and safety work."
+    override val manualOverrideExplain = "Temporarily switch simulated sound mode or undo back to your previous state."
+    override val conflictCheckExplain = "Check if any active routines run at the same time and choose a winner."
+    override val emergencyTestExplain = "Simulate an incoming call to confirm emergency contacts always ring through."
     override val automationPrefsTitle = "Automation Preferences"
     override val pauseAllAutomationLabel = "Pause All Automation"
     override val confirmImportantLabel = "Confirm Important Actions"
+    override val confirmImportantExplain = "Ask before saving or applying major routine changes."
     override val defaultProfileLabel = "Default Profile"
-    override val conflictPolicyLabel = "Routine Conflict Preference"
+    override val defaultProfileExplain = "Pick the mode your phone returns to when no routine is active."
+    override val conflictPolicyLabel = "When routines overlap"
+    override val conflictPolicyExplain = "Choose whether the app asks you, picks the higher importance routine, or waits."
     override val privacyTitle = "Privacy & Demo Boundaries"
+    override val privacyExplain = "All data in this app is local demo data and never reads your real phone."
     override val privacyBody = "• Uses synthetic demonstration data only.\n• Does not read real notifications.\n• Does not access real contacts.\n• Does not track actual GPS location.\n• Does not change real Android sound settings."
     override val demoMgmtTitle = "Demo Management"
+    override val demoMgmtExplain = "Reset demo routines, profiles, or activity back to the starting examples."
     override val resetDemoDataBtn = "Reset Demo Data"
     override val viewOnboardingBtn = "Replay App Guide (Onboarding)"
     override val aboutTitle = "About"
+    override val aboutExplain = "App version and current interactive demo edition details."
     override val aboutVersionLine = "Version 1.0.0 • Interactive Offline Demo Edition"
-    override val conflictDialogTitle = "Routine Conflict Detected"
-    override val conflictDefaultExplain = "Two matching routines request contradictory simulated states."
-    override val keepCurrentStateBtn = "Keep Current State"
+    override val conflictDialogTitle = "Two routines overlap"
+    override val conflictDefaultExplain = "Two active routines overlap right now. Which one should win?"
+    override val keepCurrentStateBtn = "Keep current state"
     override val playgroundSubtitle = "One-tap interactive walkthroughs using live app state."
 }
 
@@ -965,12 +1041,13 @@ private object ArabicAppStrings : AppStrings() {
     override val isArabic = true
     override val appName = "المرافق الذكي"
     override val tagline = "ابقَ مركزاً دون أن تفوتك الأمور المهمة."
-    override val demoBadge = "عرض تجريبي محاكى"
-    override val simulatedChip = "محاكاة"
-    override val appEventChip = "حالة التطبيق"
+    override val demoBadge = "عرض / محاكاة"
+    override val simulatedChip = "عرض / محاكاة"
+    override val appEventChip = "تحديث التطبيق"
     override val navHome = "الرئيسية"
     override val navAssistant = "المساعد"
     override val navRoutines = "الروتين"
+    override val navNewRoutine = "روتين جديد"
     override val navContacts = "جهات الطوارئ"
     override val navInsights = "التحليلات"
     override val navSettings = "الإعدادات"
@@ -1042,15 +1119,15 @@ private object ArabicAppStrings : AppStrings() {
     override val homeCardAssistantSub = "اكتب ما تريده بلغة بسيطة وراجع المقترح قبل الحفظ."
     override val homeCardRoutinesTitle = "روتيناتي"
     override val homeCardContactsTitle = "جهات الطوارئ"
-    override val homeCardContactsSubSuffix = "جهات اتصال لا تتأثر بأي روتين أو كتم"
+    override val homeCardContactsSubSuffix = "جهات محمية — تصلك دائماً حتى في الصامت"
     override val manageProfilesBtn = "إدارة الأوضاع"
     override val activitySubtitle = "التحليلات وسجل النشاط وذكاء الإشعارات في شاشة واحدة."
     override val advancedSubtitle = "الوعي بالسياق وساحة التجارب ومحرك المحاكاة."
-    override val settingsSubtitle = "ضوابط الأمان، جهات الطوارئ، النشاط، اللغة، والأدوات المتقدمة."
+    override val settingsSubtitle = "تخصيص المظهر، أمان الطوارئ، تفضيلات الروتين، والأدوات المتقدمة."
     override val settingsMoreTitle = "المزيد"
-    override val descActivityMerged = "التحليلات وسجل النشاط وذكاء الإشعارات."
-    override val descAdvanced = "الوعي بالسياق وساحة التجارب ومحرك المحاكاة."
-    override val descEmergencyContacts = "إدارة الأشخاص الذين يصلونك دائماً رغم أي روتين."
+    override val descActivityMerged = "اعرض إحصائيات التركيز وسجل النشاط واتجاهات الإشعارات."
+    override val descAdvanced = "اختبر السياق المحاكى وسيناريوهات التجربة ومحرك القواعد."
+    override val descEmergencyContacts = "اختر الأشخاص الذين يصلونك دائماً حتى لو كان الهاتف صامتاً."
     override val activeProfile = "الوضع الحالي"
     override val switchProfilePrompt = "تبديل الوضع:"
     override val simulatedPhoneStatus = "حالة الهاتف"
@@ -1098,13 +1175,21 @@ private object ArabicAppStrings : AppStrings() {
     override val filterAllRoutines = "الكل"
     override val filterActiveRoutines = "المفعّلة"
     override val filterPausedRoutines = "المتوقفة"
-    override val stepWhenTitle = "متى يجب أن يعمل الروتين؟"
-    override val stepConditionsTitle = "ما الشروط التي يجب تطبيقها؟"
-    override val stepActionsTitle = "ما الإجراءات التي ستحدث؟"
-    override val stepExceptionsTitle = "هل توجد أي استثناءات؟"
-    override val stepReviewTitle = "مراجعة وحفظ الروتين"
-    override val advancedRuleOptions = "خيارات القاعدة المتقدمة"
-    override val alwaysRunNote = "اختياري — اتركه غير محدد للتشغيل بمجرد حدوث المُشغّل."
+    override val stepWhenTitle = "متى يجب أن يعمل؟"
+    override val stepConditionsTitle = "فقط إذا توفرت هذه الشروط"
+    override val stepActionsTitle = "افعل هذا تلقائياً"
+    override val stepExceptionsTitle = "ما عدا هذه الحالات"
+    override val stepReviewTitle = "اسم الروتين وحفظه"
+    override val builderRowWhenTitle = "متى"
+    override val builderRowOnlyIfTitle = "فقط إذا"
+    override val builderRowDoThisTitle = "افعل هذا"
+    override val builderRowExceptTitle = "ما عدا"
+    override val builderDoneBtn = "تم"
+    override val priorityHighLabel = "عالية"
+    override val priorityMediumLabel = "متوسطة"
+    override val priorityLowLabel = "منخفضة"
+    override val advancedRuleOptions = "الأهمية"
+    override val alwaysRunNote = "اختياري — اتركه فارغاً للتشغيل بمجرد حدوث المُشغّل."
     override val contactsPriorityExplain = "جهات الطوارئ تصلك دائماً حتى في الوضع الصامت. جهات الأولوية العالية تعتمد على الوضع النشط، والجهات العادية تتبع نمط الصوت الحالي."
     override val emergencyTierTitle = "الطوارئ"
     override val highPriorityTierTitle = "أولوية عالية"
@@ -1237,8 +1322,10 @@ private object ArabicAppStrings : AppStrings() {
     override val focusProfileLabel = "وضع التركيز"
     override val autoActivateProfile = "تفعيل الوضع المختار تلقائياً عند البدء"
     override val startFocusBtn = "بدء جلسة التركيز"
+    override val playBtn = "تشغيل"
     override val pauseBtn = "إيقاف مؤقت"
     override val resumeBtn = "استئناف"
+    override val resetBtn = "إعادة ضبط"
     override val endBtn = "إنهاء"
     override val simBlockedDistractionBtn = "محاكاة حجب إشعار مزعج"
     override val sessionSummaryTitle = "ملخص الجلسة"
@@ -1284,23 +1371,42 @@ private object ArabicAppStrings : AppStrings() {
     override val recoverySub = "تطلب جميع عمليات الاسترداد تأكيداً صريحاً قبل التنفيذ."
     override val resetDemoRoutinesBtn = "إعادة ضبط روتينات العرض"
     override val resetEntireAppBtn = "إعادة ضبط التطبيق بالكامل"
+    override val settingsGeneralTitle = "عام"
+    override val settingsGeneralExplain = "التحكم في المظهر واللغة وسجل النشاط اليومي."
+    override val settingsSafetyTitle = "الطوارئ والأمان"
+    override val settingsSafetyExplain = "إبقاء جهات الطوارئ متاحة وإيقاف الأتمتة أو استعادة الحالة في أي وقت."
+    override val settingsAutomationTitle = "الأتمتة"
+    override val settingsAutomationExplain = "اختر كيف تتصرف الروتينات افتراضياً وماذا يحدث عند تعارضها."
+    override val settingsAdvancedTitle = "متقدم"
+    override val settingsAdvancedExplain = "أدوات المحاكاة وإعادة ضبط البيانات التجريبية وحدود الخصوصية."
     override val appearanceTitle = "المظهر"
+    override val appearanceExplain = "التبديل بين الوضع الفاتح والداكن أو اتباع إعدادات النظام."
     override val languageTitle = "اللغة واتجاه الواجهة"
-    override val languageSub = "اختيار العربية يحدّث جميع النصوص ويحوّل التخطيط من اليمين إلى اليسار (RTL)."
+    override val languageSub = "تغيير لغة التطبيق بين الإنجليزية والعربية مع تفعيل اتجاه RTL تلقائياً."
+    override val replayOnboardingExplain = "إعادة عرض الدليل التعريفي المكون من 3 خطوات لمعرفة طريقة عمل التطبيق."
+    override val manualOverrideExplain = "تبديل وضع الصوت المحاكى مؤقتاً أو التراجع إلى الحالة السابقة."
+    override val conflictCheckExplain = "تحقق مما إذا كانت هناك روتينات متداخلة واختر الأفضل."
+    override val emergencyTestExplain = "جرّب مكالمة واردة للتأكد من وصول جهات الطوارئ دائماً."
     override val automationPrefsTitle = "تفضيلات الأتمتة"
     override val pauseAllAutomationLabel = "إيقاف الأتمتة مؤقتاً"
     override val confirmImportantLabel = "تأكيد الإجراءات المهمة"
+    override val confirmImportantExplain = "اطلب التأكيد قبل حفظ أو تطبيق التغييرات الرئيسية."
     override val defaultProfileLabel = "الوضع الافتراضي"
-    override val conflictPolicyLabel = "سياسة حل تعارض الروتينات"
+    override val defaultProfileExplain = "اختر الوضع الذي يعود إليه الهاتف عند عدم تشغيل أي روتين."
+    override val conflictPolicyLabel = "عند تعارض الروتينات"
+    override val conflictPolicyExplain = "حدد ما إذا كان التطبيق يسألك أو يختار الأعلى أهمية أو ينتظر."
     override val privacyTitle = "الخصوصية ونطاق المحاكاة"
+    override val privacyExplain = "جميع البيانات هنا محاكاة محلية ولا تصل أبداً إلى بيانات هاتفك الحقيقية."
     override val privacyBody = "• يستخدم بيانات تجريبية افتراضية فقط.\n• لا يقرأ الإشعارات الحقيقية.\n• لا يصل إلى جهات الاتصال الحقيقية.\n• لا يتتبع الموقع الجغرافي الفعلي.\n• لا يغيّر إعدادات الصوت الحقيقية في أندرويد."
     override val demoMgmtTitle = "إدارة العرض التجريبي"
+    override val demoMgmtExplain = "استعد الروتينات أو الأوضاع أو السجل إلى أمثلة البداية."
     override val resetDemoDataBtn = "إعادة ضبط البيانات"
     override val viewOnboardingBtn = "عرض دليل التطبيق التعريفي"
     override val aboutTitle = "حول التطبيق"
+    override val aboutExplain = "معلومات الإصدار الحالي ونسخة العرض التفاعلية."
     override val aboutVersionLine = "الإصدار 1.0.0 • نسخة عرض تفاعلية بدون إنترنت"
-    override val conflictDialogTitle = "تم اكتشاف تعارض بين القواعد"
-    override val conflictDefaultExplain = "روتينان مطابقان يطلبان حالات هاتف متعارضة."
+    override val conflictDialogTitle = "تعارض بين روتينين"
+    override val conflictDefaultExplain = "يتعارض روتينان نشطان الآن. أيهما يجب أن يربح؟"
     override val keepCurrentStateBtn = "الإبقاء على الحالة الحالية"
     override val playgroundSubtitle = "تجارب تفاعلية بضغطة واحدة متصلة بحالة التطبيق المباشرة."
 }

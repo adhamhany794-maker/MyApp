@@ -5,10 +5,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -36,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -60,12 +64,44 @@ import androidx.compose.ui.unit.dp
 import com.example.models.ProfileIconKey
 import com.example.models.SmartRoutine
 import com.example.models.SoundMode
+import com.example.ui.theme.DarkBackground
+import com.example.ui.theme.EmeraldGlowMid
+import com.example.ui.theme.EmeraldGlowTop
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.LocalIsDarkTheme
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanation
 import com.example.viewmodels.PendingConflictPrompt
+
+@Composable
+fun SmartCompanionBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val isDark = LocalIsDarkTheme.current
+    val bgModifier = if (isDark) {
+        modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        EmeraldGlowTop.copy(alpha = 0.85f),
+                        EmeraldGlowMid.copy(alpha = 0.45f),
+                        DarkBackground
+                    )
+                )
+            )
+    } else {
+        modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    }
+
+    Box(modifier = bgModifier, content = content)
+}
 
 @Composable
 fun CompanionCard(
@@ -75,31 +111,35 @@ fun CompanionCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val isDark = LocalIsDarkTheme.current
     val border = BorderStroke(1.dp, borderColor)
+    val elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
+    val shape = RoundedCornerShape(24.dp)
+
     if (onClick != null) {
         Card(
             onClick = onClick,
             modifier = modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
+            shape = shape,
             colors = CardDefaults.cardColors(containerColor = containerColor),
             border = border,
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            elevation = elevation
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(20.dp),
                 content = content
             )
         }
     } else {
         Card(
             modifier = modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
+            shape = shape,
             colors = CardDefaults.cardColors(containerColor = containerColor),
             border = border,
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            elevation = elevation
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(20.dp),
                 content = content
             )
         }
@@ -108,32 +148,30 @@ fun CompanionCard(
 
 @Composable
 fun SimulatedDemoBadge(
-    text: String = "SIMULATED",
+    text: String = "Demo / simulation",
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(999.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Icon(
                 imageVector = Icons.Rounded.Science,
                 contentDescription = null,
                 modifier = Modifier.size(12.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = JetBrainsMonoFamily,
-                    fontWeight = FontWeight.SemiBold
-                ),
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -216,7 +254,7 @@ fun ScreenIntroHeader(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f, fill = false)
                 )
@@ -229,7 +267,7 @@ fun ScreenIntroHeader(
             }
             if (showSimulatedBadge) {
                 Spacer(Modifier.width(8.dp))
-                SimulatedDemoBadge(strings.simulatedChip)
+                SimulatedDemoBadge(strings.demoBadge)
             } else if (trailingContent != null) {
                 Spacer(Modifier.width(8.dp))
                 trailingContent()
@@ -237,7 +275,7 @@ fun ScreenIntroHeader(
         }
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
@@ -256,7 +294,7 @@ fun FeatureExplanationDialog(
             Icon(
                 imageVector = Icons.Outlined.Info,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary
+                tint = MaterialTheme.colorScheme.primary
             )
         },
         title = {
@@ -303,29 +341,39 @@ private fun ExplanationBlock(label: String, body: String) {
 @Composable
 fun SectionHeader(
     title: String,
+    subtitle: String? = null,
     actionLabel: String? = null,
     onActionClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f)
-        )
-        if (actionLabel != null && onActionClick != null) {
-            TextButton(onClick = onActionClick) {
-                Text(
-                    text = actionLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
+            )
+            if (actionLabel != null && onActionClick != null) {
+                TextButton(onClick = onActionClick) {
+                    Text(
+                        text = actionLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
+        }
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -413,6 +461,9 @@ fun ConflictResolutionDialog(
     onSelectRoutine: (SmartRoutine) -> Unit,
     onKeepCurrent: () -> Unit
 ) {
+    val names = prompt.candidateRoutines.map { strings.localizedRoutineName(it) }
+    val plainQuestion = strings.conflictPromptSentence(names)
+
     AlertDialog(
         onDismissRequest = onKeepCurrent,
         modifier = Modifier.widthIn(max = 420.dp),
@@ -436,53 +487,64 @@ fun ConflictResolutionDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = prompt.trace.conflictExplanation ?: strings.conflictDefaultExplain,
-                    style = MaterialTheme.typography.bodyMedium
+                    text = plainQuestion,
+                    style = MaterialTheme.typography.bodyLarge
                 )
-                Text(
-                    text = "${strings.simTraceTrigger}: ${prompt.triggerLabel}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                prompt.candidateRoutines.forEach { routine ->
-                    Surface(
-                        onClick = { onSelectRoutine(routine) },
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("conflict_pick_${routine.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                prompt.candidateRoutines.forEachIndexed { index, routine ->
+                    val routineName = strings.localizedRoutineName(routine)
+                    val actionSummary = routine.actions.joinToString(" • ") {
+                        strings.actionTypeLabel(it.type)
+                    }
+                    if (index == 0) {
+                        Button(
+                            onClick = { onSelectRoutine(routine) },
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("conflict_pick_${routine.id}")
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = strings.localizedRoutineName(routine),
-                                    style = MaterialTheme.typography.titleSmall
-                                )
-                                Text(
-                                    text = routine.actions.joinToString(" • ") {
-                                        strings.actionTypeLabel(it.type)
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(8.dp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = "P${routine.priority}",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    text = routineName,
+                                    style = MaterialTheme.typography.titleSmall
                                 )
+                                if (actionSummary.isNotBlank()) {
+                                    Text(
+                                        text = actionSummary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        FilledTonalButton(
+                            onClick = { onSelectRoutine(routine) },
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("conflict_pick_${routine.id}")
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = routineName,
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                                if (actionSummary.isNotBlank()) {
+                                    Text(
+                                        text = actionSummary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -490,17 +552,6 @@ fun ConflictResolutionDialog(
             }
         },
         confirmButton = {
-            val recommended = prompt.candidateRoutines.maxByOrNull { it.priority }
-            if (recommended != null) {
-                Button(
-                    onClick = { onSelectRoutine(recommended) },
-                    modifier = Modifier.testTag("conflict_run_recommended")
-                ) {
-                    Text("${strings.runNow}: ${strings.localizedRoutineName(recommended)}")
-                }
-            }
-        },
-        dismissButton = {
             TextButton(
                 onClick = onKeepCurrent,
                 modifier = Modifier.testTag("conflict_keep_current")
@@ -526,10 +577,10 @@ fun HorizontalMetricBars(
     val maxVal = (entries.maxOfOrNull { it.value } ?: 1f).coerceAtLeast(1f)
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         entries.forEach { entry ->
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -552,23 +603,24 @@ fun HorizontalMetricBars(
                     )
                 }
                 val trackColor = MaterialTheme.colorScheme.surfaceVariant
-                val fraction = (entry.value / maxVal).coerceIn(0.04f, 1f)
+                val fraction = (entry.value / maxVal).coerceIn(0.06f, 1f)
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(10.dp)
+                        .height(12.dp)
                 ) {
+                    val radius = CornerRadius(size.height / 2f, size.height / 2f)
                     drawRoundRect(
                         color = trackColor,
                         topLeft = Offset.Zero,
                         size = size,
-                        cornerRadius = CornerRadius(12f, 12f)
+                        cornerRadius = radius
                     )
                     drawRoundRect(
                         color = entry.color,
                         topLeft = Offset.Zero,
                         size = Size(size.width * fraction, size.height),
-                        cornerRadius = CornerRadius(12f, 12f)
+                        cornerRadius = radius
                     )
                 }
             }
@@ -586,12 +638,12 @@ fun VerticalTrendChart(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(152.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .height(160.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Bottom
     ) {
         entries.forEach { entry ->
-            val ratio = (entry.value / maxVal).coerceIn(0.08f, 1f)
+            val ratio = (entry.value / maxVal).coerceIn(0.10f, 1f)
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -604,30 +656,31 @@ fun VerticalTrendChart(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.62f)
-                        .height(94.dp),
+                        .fillMaxWidth(0.56f)
+                        .height(98.dp),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     Canvas(modifier = Modifier.matchParentSize()) {
+                        val radius = CornerRadius(size.width / 2f, size.width / 2f)
                         drawRoundRect(
                             color = trackColor,
                             topLeft = Offset.Zero,
                             size = size,
-                            cornerRadius = CornerRadius(14f, 14f)
+                            cornerRadius = radius
                         )
-                        val barHeight = size.height * ratio
+                        val barHeight = (size.height * ratio).coerceAtLeast(size.width)
                         drawRoundRect(
                             color = entry.color,
                             topLeft = Offset(0f, size.height - barHeight),
                             size = Size(size.width, barHeight),
-                            cornerRadius = CornerRadius(14f, 14f)
+                            cornerRadius = radius
                         )
                     }
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = entry.label,
                     style = MaterialTheme.typography.labelSmall,

@@ -105,7 +105,7 @@ fun AssistantScreen(
                     Icon(
                         imageVector = Icons.Rounded.AutoAwesome,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(strings.assistantHeaderTitle, style = MaterialTheme.typography.titleMedium)
@@ -117,7 +117,7 @@ fun AssistantScreen(
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    SimulatedDemoBadge(strings.simulatedChip)
+                    SimulatedDemoBadge(strings.demoBadge)
                     FeatureInfoButton(
                         contentDescription = strings.featureHelpContentDesc,
                         onClick = { showHelp = true }

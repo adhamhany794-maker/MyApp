@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,14 +18,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -40,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -72,11 +78,32 @@ fun FocusSessionsScreen(
     var showHelp by remember { mutableStateOf(false) }
 
     val focus = state.activeFocus
+    val plannedIdleMinutes = if (useCustom) {
+        (customMinutesText.toIntOrNull() ?: 30).coerceIn(5, 240)
+    } else {
+        selectedMinutes
+    }
+    val ringProgress = if (focus.isActive) {
+        (focus.remainingSeconds.toFloat() / focus.totalSeconds.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+    } else {
+        1f
+    }
+    val centerTimeText = if (focus.isActive) {
+        TimeUtils.formatTimer(focus.remainingSeconds)
+    } else {
+        TimeUtils.formatTimer(plannedIdleMinutes * 60)
+    }
+    val matchedProfile = if (focus.isActive) {
+        state.profiles.firstOrNull { it.id == focus.profileId }
+    } else {
+        selectedProfile
+    }
+    val displayProfile = matchedProfile?.let { strings.localizedProfileName(it) } ?: focus.profileName
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             ScreenIntroHeader(
@@ -87,47 +114,183 @@ fun FocusSessionsScreen(
             )
         }
 
+        // Big Circular Progress Ring + Time in Center + Simple Play, Pause, Reset Buttons
         item {
             CompanionCard(modifier = Modifier.testTag("focus_timer_card")) {
-                if (focus.isActive) {
-                    val progress = (focus.remainingSeconds.toFloat() / focus.totalSeconds.coerceAtLeast(1).toFloat())
-                        .coerceIn(0f, 1f)
-                    val elapsedSeconds = (focus.totalSeconds - focus.remainingSeconds).coerceAtLeast(0)
-                    val matchedProfile = state.profiles.firstOrNull { it.id == focus.profileId }
-                    val displayProfile = matchedProfile?.let { strings.localizedProfileName(it) } ?: focus.profileName
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (focus.isActive) {
                         Text(
                             text = if (focus.isPaused) strings.focusPausedBadge else strings.focusActiveBadge,
-                            style = MaterialTheme.typography.labelLarge.copy(fontFamily = JetBrainsMonoFamily),
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.height(14.dp))
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(180.dp)) {
-                            CircularProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier.fillMaxSize(),
-                                strokeWidth = 10.dp
+                    }
+
+                    val ringColor = MaterialTheme.colorScheme.primary
+                    val trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(216.dp)
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val strokeWidth = 14.dp.toPx()
+                            drawArc(
+                                color = trackColor,
+                                startAngle = 0f,
+                                sweepAngle = 360f,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                             )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = TimeUtils.formatTimer(focus.remainingSeconds),
-                                    style = MaterialTheme.typography.displaySmall.copy(fontFamily = JetBrainsMonoFamily),
-                                    modifier = Modifier.testTag("focus_countdown_text")
+                            drawArc(
+                                color = ringColor,
+                                startAngle = -90f,
+                                sweepAngle = 360f * ringProgress,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = centerTimeText,
+                                style = MaterialTheme.typography.displaySmall.copy(fontFamily = JetBrainsMonoFamily),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.testTag("focus_countdown_text")
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = displayProfile,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Simple Play, Pause, Reset Controls
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Reset Button
+                        FilledTonalIconButton(
+                            onClick = {
+                                if (focus.isActive) {
+                                    viewModel.resetFocusSession()
+                                } else {
+                                    useCustom = false
+                                    selectedMinutes = 25
+                                }
+                            },
+                            modifier = Modifier
+                                .size(54.dp)
+                                .testTag("focus_reset_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = strings.resetBtn,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Play / Start Primary Orange Circle Button
+                        Button(
+                            onClick = {
+                                if (!focus.isActive) {
+                                    selectedProfile?.let {
+                                        viewModel.startFocusSession(plannedIdleMinutes, it, activateProfileOnStart)
+                                    }
+                                } else if (focus.isPaused) {
+                                    viewModel.pauseOrResumeFocusSession()
+                                } else {
+                                    viewModel.pauseOrResumeFocusSession()
+                                }
+                            },
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier
+                                .size(68.dp)
+                                .testTag(if (!focus.isActive) "focus_start_btn" else "focus_pause_resume_btn")
+                        ) {
+                            Icon(
+                                imageVector = if (!focus.isActive || focus.isPaused) {
+                                    Icons.Rounded.PlayArrow
+                                } else {
+                                    Icons.Rounded.Pause
+                                },
+                                contentDescription = if (!focus.isActive) {
+                                    strings.playBtn
+                                } else if (focus.isPaused) {
+                                    strings.resumeBtn
+                                } else {
+                                    strings.pauseBtn
+                                },
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+
+                        // Pause (when idle, secondary Pause/Stop state or when active, Pause/End)
+                        if (focus.isActive) {
+                            FilledTonalIconButton(
+                                onClick = { viewModel.endFocusSession(completedNaturally = false) },
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .testTag("focus_end_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Stop,
+                                    contentDescription = strings.endBtn,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                Text(
-                                    text = displayProfile,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        } else {
+                            FilledTonalIconButton(
+                                onClick = { },
+                                enabled = false,
+                                modifier = Modifier.size(54.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Pause,
+                                    contentDescription = strings.pauseBtn,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
-                        Spacer(Modifier.height(12.dp))
+                    }
 
-                        // Both Remaining & Elapsed time metrics side by side
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = strings.resetBtn,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (!focus.isActive) strings.playBtn
+                            else if (focus.isPaused) strings.resumeBtn
+                            else strings.pauseBtn,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (focus.isActive) strings.endBtn else strings.pauseBtn,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (focus.isActive) {
+                        val elapsedSeconds = (focus.totalSeconds - focus.remainingSeconds).coerceAtLeast(0)
+                        Spacer(Modifier.height(18.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -184,34 +347,7 @@ fun FocusSessionsScreen(
                             color = StatusEmerald,
                             fontWeight = FontWeight.Medium
                         )
-                        Spacer(Modifier.height(14.dp))
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { viewModel.pauseOrResumeFocusSession() },
-                                modifier = Modifier.testTag("focus_pause_resume_btn")
-                            ) {
-                                Icon(
-                                    imageVector = if (focus.isPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
-                                    contentDescription = null
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (focus.isPaused) strings.resumeBtn else strings.pauseBtn)
-                            }
-                            OutlinedButton(
-                                onClick = { viewModel.endFocusSession(completedNaturally = false) },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                modifier = Modifier.testTag("focus_end_btn")
-                            ) {
-                                Icon(Icons.Rounded.Stop, contentDescription = null)
-                                Spacer(Modifier.width(4.dp))
-                                Text(strings.endBtn)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(10.dp))
                         OutlinedButton(
                             onClick = { viewModel.simulateBlockedInterruptionDuringFocus() },
                             modifier = Modifier.fillMaxWidth()
@@ -221,7 +357,14 @@ fun FocusSessionsScreen(
                             Text(strings.simBlockedDistractionBtn)
                         }
                     }
-                } else {
+                }
+            }
+        }
+
+        // Session setup card when idle
+        if (!focus.isActive) {
+            item {
+                CompanionCard {
                     Text(strings.configureFocusTitle, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(10.dp))
                     Text(strings.durationLabel, style = MaterialTheme.typography.labelMedium)
@@ -272,27 +415,6 @@ fun FocusSessionsScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Switch(checked = activateProfileOnStart, onCheckedChange = { activateProfileOnStart = it })
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            val mins = if (useCustom) {
-                                (customMinutesText.toIntOrNull() ?: 30).coerceIn(5, 240)
-                            } else {
-                                selectedMinutes
-                            }
-                            selectedProfile?.let {
-                                viewModel.startFocusSession(mins, it, activateProfileOnStart)
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("focus_start_btn")
-                    ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.startFocusBtn)
                     }
                 }
             }

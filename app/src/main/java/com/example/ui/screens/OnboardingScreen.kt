@@ -58,9 +58,9 @@ fun OnboardingScreen(
         Icons.Rounded.AutoAwesome
     )
     val accents = listOf(
-        Color(0xFF0D7C7B),
-        Color(0xFFD97706),
-        Color(0xFF4F46E5)
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary
     )
 
     val pages = strings.onboardingPages
@@ -69,7 +69,7 @@ fun OnboardingScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = Color.Transparent
     ) {
         Column(
             modifier = Modifier
