@@ -652,4 +652,69 @@ class RoutineJsonValidatorTest {
         assertEquals(SoundMode.SILENT.name, reply.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
         assertEquals("تفعيل الوضع الصامت", reply.proposal!!.actionSummary)
     }
+
+    @Test
+    fun `sequential standalone requests without clearing update routine card from 8pm-10am to 7pm-6am`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        val snapshot1 = baseSnapshot(AppLanguage.ARABIC)
+
+        // 1. First standalone request: "اعمل صامت من 8 بليل ل10 الصبح"
+        val reply1 = engine.processPrompt("اعمل صامت من 8 بليل ل10 الصبح", snapshot1)
+        assertNotNull(reply1.proposal)
+        assertEquals("8:00 م", reply1.proposal!!.routine.scheduleStartTime)
+        assertEquals("10:00 ص", reply1.proposal!!.endTimeLabel)
+        assertEquals(SoundMode.SILENT.name, reply1.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+
+        // 2. Without clearing, second standalone message: "7 مساء الى 6 صباح"
+        val snapshot2 = snapshot1.copy(pendingRoutineDraft = reply1.proposal!!.routine)
+        val reply2 = engine.processPrompt("7 مساء الى 6 صباح", snapshot2)
+        assertNotNull(reply2.proposal)
+        assertEquals("7:00 م", reply2.proposal!!.routine.scheduleStartTime)
+        assertEquals("6:00 ص", reply2.proposal!!.endTimeLabel)
+        assertEquals("يومياً من 7:00 م إلى 6:00 ص", reply2.proposal!!.triggerSummary)
+    }
+
+    @Test
+    fun `vibrate routine request from 11pm to 7am gives vibrate mode and correct schedule`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        val snapshot = baseSnapshot(AppLanguage.ARABIC)
+
+        val reply = engine.processPrompt("اهتزاز من 11 بالليل لـ 7 الصبح", snapshot)
+        assertNotNull(reply.proposal)
+        assertEquals("11:00 م", reply.proposal!!.routine.scheduleStartTime)
+        assertEquals("7:00 ص", reply.proposal!!.endTimeLabel)
+        assertEquals(SoundMode.VIBRATE.name, reply.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+        assertEquals("تفعيل وضع الاهتزاز", reply.proposal!!.actionSummary)
+    }
+
+    @Test
+    fun `routine json validator overrides stale gemini default times with prompt times`() {
+        val geminiJson = """
+            {
+              "status": "ok",
+              "name": "ساعات الهدوء",
+              "trigger": {
+                "type": "time_range",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "days": ["EVERY_DAY"]
+              },
+              "conditions": ["AUTOMATION_ENABLED"],
+              "action": { "mode": "silent" },
+              "exceptions": ["EMERGENCY_CONTACTS"]
+            }
+        """.trimIndent()
+
+        val result = RoutineJsonValidator.parseAndValidate(
+            rawJson = geminiJson,
+            originalPrompt = "7 مساء الى 6 صباح",
+            existingRoutines = emptyList(),
+            isArabic = true
+        )
+        assertTrue(result is RoutineJsonValidationResult.Valid)
+        val valid = result as RoutineJsonValidationResult.Valid
+        assertEquals("7:00 م", valid.proposal.routine.scheduleStartTime)
+        assertEquals("6:00 ص", valid.proposal.endTimeLabel)
+    }
 }
+

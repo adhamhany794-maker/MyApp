@@ -232,20 +232,28 @@ object RoutineJsonValidator {
 
         when (triggerTypeRaw) {
             "time_range" -> {
-                val startStr = if (triggerObj.isNull("startTime")) "" else triggerObj.optString("startTime", "").trim()
-                val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
-                val startParsed = parseTime24(startStr)
-                val endParsed = parseTime24(endStr)
-                if (startParsed == null || endParsed == null || startParsed == endParsed) {
-                    return RoutineJsonValidationResult.NeedsClarification(
-                        if (isArabic) "ما وقت البداية والنهاية المحددان لهذا الروتين؟"
-                        else "What start and end times should this routine use?"
-                    )
+                val promptTimeRange = RoutineTimeParser.parseTimeRange(originalPrompt)
+                if (promptTimeRange != null) {
+                    startHour = promptTimeRange.first
+                    startMinute = 0
+                    endHour = promptTimeRange.second
+                    endMinute = 0
+                } else {
+                    val startStr = if (triggerObj.isNull("startTime")) "" else triggerObj.optString("startTime", "").trim()
+                    val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
+                    val startParsed = parseTime24(startStr)
+                    val endParsed = parseTime24(endStr)
+                    if (startParsed == null || endParsed == null || startParsed == endParsed) {
+                        return RoutineJsonValidationResult.NeedsClarification(
+                            if (isArabic) "ما وقت البداية والنهاية المحددان لهذا الروتين؟"
+                            else "What start and end times should this routine use?"
+                        )
+                    }
+                    startHour = startParsed.first
+                    startMinute = startParsed.second
+                    endHour = endParsed.first
+                    endMinute = endParsed.second
                 }
-                startHour = startParsed.first
-                startMinute = startParsed.second
-                endHour = endParsed.first
-                endMinute = endParsed.second
             }
             "days" -> {
                 if (parsedDays.isEmpty()) {
@@ -299,15 +307,24 @@ object RoutineJsonValidator {
                 else "What should your phone do when triggered — Silent, Vibrate, Sound, or Focus?"
             )
 
+        val promptExplicitMode = RoutineTimeParser.parseExplicitSoundMode(originalPrompt)
         val actionMode = if (actionObj.isNull("mode")) "" else actionObj.optString("mode", "").trim().lowercase()
-        if (actionMode !in setOf("sound", "vibrate", "silent", "focus")) {
+        val effectiveActionMode = promptExplicitMode?.let {
+            when (it) {
+                SoundMode.SOUND -> "sound"
+                SoundMode.VIBRATE -> "vibrate"
+                SoundMode.SILENT -> "silent"
+            }
+        } ?: actionMode
+
+        if (effectiveActionMode !in setOf("sound", "vibrate", "silent", "focus")) {
             return RoutineJsonValidationResult.NeedsClarification(
                 if (isArabic) "هل تريد وضع الصوت على صامت، أم اهتزاز، أم صوت عادي، أم وضع التركيز؟"
                 else "Should this routine set your phone to Silent, Vibrate, Sound, or start Focus mode?"
             )
         }
 
-        val focusMinutes: Int? = if (actionMode == "focus") {
+        val focusMinutes: Int? = if (effectiveActionMode == "focus") {
             if (!actionObj.has("focusMinutes") || actionObj.isNull("focusMinutes")) {
                 45
             } else {
@@ -339,17 +356,17 @@ object RoutineJsonValidator {
                 .forEach { add(RuleException(it, it.displayName)) }
         }
 
-        val soundMode = when (actionMode) {
+        val soundMode = when (effectiveActionMode) {
             "sound" -> SoundMode.SOUND
             "vibrate" -> SoundMode.VIBRATE
             else -> SoundMode.SILENT
         }
         val targetProfileId = when {
-            actionMode == "focus" -> "profile_study"
+            effectiveActionMode == "focus" -> "profile_study"
             place == SimulatedLocation.WORKPLACE -> "profile_work"
-            actionMode == "silent" && (startHour >= 22 || startHour < 6) -> "profile_sleep"
-            actionMode == "silent" -> "profile_study"
-            actionMode == "vibrate" -> "profile_work"
+            effectiveActionMode == "silent" && (startHour >= 22 || startHour < 6) -> "profile_sleep"
+            effectiveActionMode == "silent" -> "profile_study"
+            effectiveActionMode == "vibrate" -> "profile_work"
             else -> "profile_personal"
         }
 
@@ -365,8 +382,7 @@ object RoutineJsonValidator {
 
         val triggerSummary = when (triggerType) {
             TriggerType.SPECIFIC_TIME -> {
-                val dayText = localizedDayFilter(dayFilter, isArabic)
-                if (isArabic) "$dayText • $startLabel" else "$dayText at $startLabel"
+                if (isArabic) "يومياً من $startLabel إلى $endLabel" else "Daily from $startLabel to $endLabel"
             }
             TriggerType.SPECIFIC_DAYS -> localizedDayFilter(dayFilter, isArabic)
             TriggerType.LOCATION_ENTERED -> if (isArabic) {
@@ -394,12 +410,12 @@ object RoutineJsonValidator {
         val actions = buildList {
             add(RuleAction(ActionType.ACTIVATE_PROFILE, targetProfileId, "Activate profile"))
             add(RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set ${soundMode.displayName} mode"))
-            if (actionMode == "focus" && focusMinutes != null) {
+            if (effectiveActionMode == "focus" && focusMinutes != null) {
                 add(RuleAction(ActionType.START_FOCUS_SESSION, focusMinutes.toString(), "Focus (${focusMinutes}m)"))
             }
         }
 
-        val actionSummary = when (actionMode) {
+        val actionSummary = when (effectiveActionMode) {
             "focus" -> if (isArabic) {
                 "بدء التركيز (${focusMinutes} د) مع كتم التنبيهات"
             } else {

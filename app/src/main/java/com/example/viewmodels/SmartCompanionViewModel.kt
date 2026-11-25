@@ -7,6 +7,7 @@ import com.example.BuildConfig
 import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
+import com.example.assistant.RoutineTimeParser
 import com.example.data.AppPreferences
 import com.example.models.ActionType
 import com.example.models.ActiveFocusSession
@@ -975,6 +976,18 @@ class SmartCompanionViewModel(
         _isAssistantThinking.value = true
 
         viewModelScope.launch {
+            val lower = trimmed.lowercase().trim()
+            val promptRange = RoutineTimeParser.parseTimeRange(lower)
+            val isClarificationAnswer = isClarificationFollowUpAnswer(lower) ||
+                (_clarificationTurnCount.value > 0 && promptRange != null && !isStandaloneRoutineCreation(lower))
+            val isStandalone = !isClarificationAnswer && (promptRange != null || isStandaloneRoutineCreation(lower))
+
+            // Requirement 3: A new standalone request (not a follow-up answer) must start a fresh draft
+            if (isStandalone) {
+                _pendingRoutineDraft.value = null
+                _clarificationTurnCount.value = 0
+            }
+
             val state = uiState.value
             val history = _assistantMessages.value
                 .filter { it.id != "welcome_1" }
@@ -1000,59 +1013,61 @@ class SmartCompanionViewModel(
             val effectiveProposal = if (reply.proposal == null) {
                 _clarificationTurnCount.update { it + 1 }
                 if (_clarificationTurnCount.value >= 2) {
-                    val draft = _pendingRoutineDraft.value ?: LocalDemoAssistantEngine().processPrompt(trimmed, snapshot).proposal?.routine
-                    if (draft != null) {
-                        val isAr = isArabic()
-                        val soundAction = draft.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }
-                        val soundMode = soundAction?.let { action ->
-                            runCatching { SoundMode.valueOf(action.targetValue) }.getOrNull()
-                        } ?: SoundMode.SILENT
-                        val actionSummary = if (isAr) {
-                            when (soundMode) {
-                                SoundMode.SILENT -> "تفعيل الوضع الصامت"
-                                SoundMode.VIBRATE -> "تفعيل وضع الاهتزاز"
-                                SoundMode.SOUND -> "تفعيل وضع الصوت العادي"
+                    val fallbackProposal = LocalDemoAssistantEngine().processPrompt(trimmed, snapshot).proposal
+                    fallbackProposal ?: run {
+                        val draft = _pendingRoutineDraft.value
+                        if (draft != null) {
+                            val isAr = isArabic()
+                            val soundAction = draft.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }
+                            val soundMode = soundAction?.let { action ->
+                                runCatching { SoundMode.valueOf(action.targetValue) }.getOrNull()
+                            } ?: SoundMode.SILENT
+                            val actionSummary = if (isAr) {
+                                when (soundMode) {
+                                    SoundMode.SILENT -> "تفعيل الوضع الصامت"
+                                    SoundMode.VIBRATE -> "تفعيل وضع الاهتزاز"
+                                    SoundMode.SOUND -> "تفعيل وضع الصوت العادي"
+                                }
+                            } else {
+                                when (soundMode) {
+                                    SoundMode.SILENT -> "Set phone to Silent"
+                                    SoundMode.VIBRATE -> "Set phone to Vibrate"
+                                    SoundMode.SOUND -> "Set phone to Sound"
+                                }
                             }
-                        } else {
-                            when (soundMode) {
-                                SoundMode.SILENT -> "Set phone to Silent"
-                                SoundMode.VIBRATE -> "Set phone to Vibrate"
-                                SoundMode.SOUND -> "Set phone to Sound"
-                            }
-                        }
-                        val startLabel = draft.scheduleStartTime.ifBlank { TimeUtils.formatTime12h(draft.trigger.hour, draft.trigger.minute, isAr) }
-                        val endLabel = draft.scheduleEndTime.ifBlank { TimeUtils.formatTime12h((draft.trigger.hour + 2) % 24, draft.trigger.minute, isAr) }
-                        val triggerSummary = if (isAr) "يومياً من $startLabel إلى $endLabel" else "Daily from $startLabel to $endLabel"
-                        val exceptionSummary = if (isAr) "جهات الطوارئ مستثناة دائماً ولا يمكن حجبها" else "Emergency contacts always allowed"
-                        RoutineProposal(
-                            routine = draft.copy(scheduleStartTime = startLabel, scheduleEndTime = endLabel),
-                            triggerSummary = triggerSummary,
-                            endTimeLabel = endLabel,
-                            actionSummary = actionSummary,
-                            exceptionSummary = exceptionSummary
-                        )
-                    } else null
+                            val startLabel = draft.scheduleStartTime.ifBlank { TimeUtils.formatTime12h(draft.trigger.hour, draft.trigger.minute, isAr) }
+                            val endLabel = draft.scheduleEndTime.ifBlank { TimeUtils.formatTime12h((draft.trigger.hour + 2) % 24, draft.trigger.minute, isAr) }
+                            val triggerSummary = if (isAr) "يومياً من $startLabel إلى $endLabel" else "Daily from $startLabel to $endLabel"
+                            val exceptionSummary = if (isAr) "جهات الطوارئ مستثناة دائماً ولا يمكن حجبها" else "Emergency contacts always allowed"
+                            RoutineProposal(
+                                routine = draft.copy(scheduleStartTime = startLabel, scheduleEndTime = endLabel),
+                                triggerSummary = triggerSummary,
+                                endTimeLabel = endLabel,
+                                actionSummary = actionSummary,
+                                exceptionSummary = exceptionSummary
+                            )
+                        } else null
+                    }
                 } else null
             } else {
-                _pendingRoutineDraft.value = reply.proposal.routine
-                _clarificationTurnCount.value = 0
                 reply.proposal
             }
 
-            if (_pendingRoutineDraft.value == null && reply.proposal == null) {
-                val lower = trimmed.lowercase()
-                val soundMode = when {
-                    lower.contains("vibrate") || lower.contains("اهتزاز") -> SoundMode.VIBRATE
-                    lower.contains("sound") || lower.contains("عادي") || (lower.contains("صوت") && !lower.contains("صامت") && !lower.contains("بدون")) -> SoundMode.SOUND
-                    else -> SoundMode.SILENT
-                }
+            // Requirement 3: Clear the draft after the confirmation card is shown
+            if (effectiveProposal != null) {
+                _pendingRoutineDraft.value = null
+                _clarificationTurnCount.value = 0
+            } else if (_pendingRoutineDraft.value == null && reply.proposal == null) {
+                val soundMode = RoutineTimeParser.parseExplicitSoundMode(lower) ?: SoundMode.SILENT
+                val startH = promptRange?.first ?: 20
+                val endH = promptRange?.second ?: ((startH + 2) % 24)
                 val isAr = isArabic()
                 _pendingRoutineDraft.value = SmartRoutine(
                     id = "routine_draft_${UUID.randomUUID().toString().take(6)}",
                     name = if (isAr) "روتين مخصص" else "Custom Routine",
                     description = trimmed,
                     isEnabled = true,
-                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 20, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
+                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = startH, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
                     conditions = emptyList(),
                     actions = listOf(
                         RuleAction(ActionType.ACTIVATE_PROFILE, "profile_study", "Activate profile"),
@@ -1060,16 +1075,14 @@ class SmartCompanionViewModel(
                     ),
                     exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts")),
                     priority = 5,
-                    scheduleStartTime = "",
-                    scheduleEndTime = "",
+                    scheduleStartTime = if (promptRange != null) TimeUtils.formatTime12h(startH, 0, isAr) else "",
+                    scheduleEndTime = if (promptRange != null) TimeUtils.formatTime12h(endH, 0, isAr) else "",
                     targetProfileId = "profile_study",
                     lastExecutionResult = "",
                     lastExecutedAtMillis = null,
                     executionCount = 0,
                     skippedCount = 0
                 )
-            } else if (effectiveProposal != null) {
-                _pendingRoutineDraft.value = effectiveProposal.routine
             }
 
             if (BuildConfig.DEBUG && !reply.debugErrorLog.isNullOrBlank()) {
@@ -1172,6 +1185,25 @@ class SmartCompanionViewModel(
         _clarificationTurnCount.value = 0
         _assistantMessages.value = initialAssistantMessages(uiState.value.preferences.language)
         showBanner(if (isArabic()) "تم مسح المحادثة" else "Assistant conversation cleared")
+    }
+
+    private fun isClarificationFollowUpAnswer(lower: String): Boolean {
+        val trimmed = lower.trim()
+        val periods = setOf("مساء", "مساءً", "صباح", "صباحاً", "صباحا", "صبح", "الصبح", "pm", "am", "evening", "morning", "م", "ص", "ليل", "بليل", "بالليل", "الليل")
+        if (trimmed in periods) return true
+        val modes = setOf("صامت", "اهتزاز", "عادي", "صوت", "وضع صامت", "وضع اهتزاز", "وضع عادي", "silent", "vibrate", "sound")
+        if (trimmed in modes) return true
+        val days = setOf("يومياً", "كل يوم", "أيام الأسبوع", "عطلة نهاية الأسبوع", "السبت", "الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "daily", "weekdays", "weekends")
+        if (trimmed in days) return true
+        return false
+    }
+
+    private fun isStandaloneRoutineCreation(lower: String): Boolean {
+        val creationKeywords = listOf(
+            "اعمل", "أنشئ", "روتين", "ساعات", "جدول",
+            "create", "routine", "schedule", "keep", "make", "set"
+        )
+        return creationKeywords.any { lower.contains(it) }
     }
 
     // --- Settings, History & Safety Recovery ---
