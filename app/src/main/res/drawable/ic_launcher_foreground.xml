@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Subtle shadow halo inside safe zone -->
+    <path
+        android:fillColor="#2238BDF8"
+        android:pathData="M54,24 C67,24 78,29 78,29 L78,52 C78,68 67,79 54,84 C41,79 30,68 30,52 L30,29 C30,29 41,24 54,24 Z" />
+    <!-- Primary Shield Silhouette (centered in 66dp safe zone) -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M54,28 L74,34.5 L74,52 C74,64.5 65.5,74.5 54,79 C42.5,74.5 34,64.5 34,52 L34,34.5 Z" />
+    <!-- Inner Focus Ring -->
+    <path
+        android:fillColor="#0F2342"
+        android:pathData="M54,38.5 A13.5,13.5 0 1,0 54,65.5 A13.5,13.5 0 1,0 54,38.5 Z" />
+    <!-- Calm Cyan Core Diamond -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M54,43 L63,52 L54,61 L45,52 Z" />
+    <!-- Center Precision Dot -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M54,49 A3,3 0 1,0 54,55 A3,3 0 1,0 54,49 Z" />
+</vector>

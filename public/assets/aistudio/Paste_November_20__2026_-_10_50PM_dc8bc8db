@@ -1,0 +1,1280 @@
+# MASTER BUILD PROMPT — SMART COMPANION
+
+## 1. PRODUCT OVERVIEW
+
+Build a complete, polished, interactive native Android application called:
+
+**Smart Companion**
+
+Tagline:
+
+"Stay focused without missing what matters."
+
+Smart Companion is a personal phone-management and interruption-intelligence application.
+
+Its purpose is to help people manage their digital interruptions, protect their focus time, stay reachable by important people, and automatically adapt their phone-management preferences to their daily routines.
+
+This is NOT simply a Silent Mode scheduler.
+
+It is a unified personal phone-management system combining:
+
+- Smart Profiles.
+- Intelligent Routine Automation.
+- Context Awareness.
+- Priority Contacts.
+- Notification Intelligence.
+- AI Assistant.
+- Focus Management.
+- Activity History.
+- Insights and Analytics.
+- Safety and Recovery.
+
+The application should feel like a real commercial Android product, not a basic tutorial project or a generic dashboard.
+
+---
+
+# 2. DEVELOPMENT OBJECTIVE
+
+Build a fully interactive Android demonstration application.
+
+The objective is to demonstrate the complete product experience and all major features.
+
+IMPORTANT: This is a DEMO VERSION.
+
+Every major feature must be interactive and testable inside the application, using realistic simulated data and local state.
+
+Do not pretend that simulated functionality is connected to the real Android operating system.
+
+For this version:
+
+- Simulate phone sound modes.
+- Simulate notification behavior.
+- Simulate incoming calls and messages.
+- Simulate location and activity triggers.
+- Simulate automation execution.
+- Simulate focus sessions.
+- Simulate notification analytics.
+- Simulate AI-powered suggestions using a local demo assistant.
+- Make all settings and controls functional inside the application.
+
+The code architecture should allow real Android integrations in a future version without requiring a complete redesign.
+
+Do not integrate real device-level control in this demo.
+
+Do not request unnecessary Android permissions.
+
+---
+
+# 3. TECHNOLOGY STACK
+
+Build a native Android application using:
+
+- Kotlin.
+- Jetpack Compose.
+- Material 3.
+- Navigation Compose.
+- ViewModel.
+- Kotlin Coroutines and StateFlow.
+- DataStore for user preferences.
+- Room or an appropriate local persistence solution for structured demo data.
+
+Use a clean, maintainable architecture.
+
+Suggested structure:
+
+- ui/
+- navigation/
+- components/
+- screens/
+- data/
+- models/
+- repositories/
+- viewmodels/
+- simulation/
+- assistant/
+- theme/
+- utils/
+
+Use reusable components and separate business logic from UI code.
+
+Do not put all application logic inside MainActivity.
+
+Use stable, maintainable state management.
+
+The application must work without an internet connection.
+
+Do not require API keys, external AI services, Firebase, Supabase, or paid services for this demo.
+
+---
+
+# 4. PRODUCT DESIGN AND VISUAL IDENTITY
+
+Create a premium, modern, minimal Android interface.
+
+The design should communicate intelligence, reliability, calmness, and control.
+
+## Visual direction
+
+- Deep navy as the primary brand color.
+- Neutral backgrounds.
+- Carefully selected accent colors.
+- Elegant cards.
+- Rounded corners.
+- Subtle shadows and borders.
+- Clean typography.
+- Consistent spacing.
+- Smooth but restrained animations.
+- Clear visual hierarchy.
+
+Avoid excessive gradients, excessive colors, unnecessary decorations, and generic AI-generated dashboard styling.
+
+## Themes
+
+Support:
+
+- Light Mode.
+- Dark Mode.
+- System Default.
+
+The theme preference must persist after restarting the application.
+
+IMPORTANT:
+
+The design system is an internal development foundation.
+
+Do NOT create a user-facing Design System editor or a screen for modifying design tokens, component styles, or typography.
+
+## Responsive behavior
+
+Optimize the application for Android phones.
+
+Support different screen sizes and orientations where practical.
+
+Use proper scrolling, adaptive layouts, and accessible touch targets.
+
+---
+
+# 5. APPLICATION NAVIGATION
+
+Create the following main application destinations:
+
+1. Home
+2. Assistant
+3. Routines
+4. Contacts
+5. Insights
+
+Provide access to these additional destinations:
+
+- Smart Profiles.
+- Activity History.
+- Notification Intelligence.
+- Context Awareness.
+- Focus Sessions.
+- Settings.
+- Safety Center.
+
+Use a clean bottom navigation bar for the main destinations.
+
+Additional destinations can be accessed through the dashboard, navigation drawer, or a More section.
+
+Navigation must work correctly.
+
+Every screen must have a meaningful purpose and must not be an empty placeholder.
+
+---
+
+# 6. FIRST-LAUNCH EXPERIENCE
+
+Create a polished first-launch onboarding experience.
+
+Introduce the application through a small number of screens.
+
+Explain:
+
+1. Smart Companion helps users manage interruptions.
+2. Users can create smart profiles for different situations.
+3. Routines can automate phone-management decisions.
+4. Important contacts can be treated as exceptions.
+5. The assistant can help create routines from natural-language requests.
+
+At the end, let the user enter Demo Mode.
+
+Provide a clear option to skip onboarding.
+
+Do not require account creation.
+
+---
+
+# 7. HOME DASHBOARD
+
+Create a comprehensive dashboard that gives the user an immediate understanding of their current phone-management state.
+
+Include:
+
+## A. Greeting and overview
+
+- Time-aware greeting.
+- Current date.
+- Short personalized status message.
+
+## B. Current Smart Profile
+
+Display:
+
+- Active profile name.
+- Profile icon.
+- Profile color.
+- Description.
+- Activation status.
+
+Allow the user to switch profiles.
+
+## C. Simulated Phone Status
+
+Display the current simulated sound mode:
+
+- Sound.
+- Vibrate.
+- Silent.
+
+Allow switching between these modes.
+
+Clearly label the status as simulated.
+
+## D. Automation Status
+
+Display:
+
+- Automation enabled or paused.
+- Number of active routines.
+- Next scheduled routine.
+
+Provide a functional pause/resume control.
+
+## E. Quick Actions
+
+Include:
+
+- Activate Study Profile.
+- Activate Work Profile.
+- Activate Sleep Profile.
+- Start Focus Session.
+- Change simulated sound mode.
+- Pause All Automations.
+
+## F. Today's Schedule
+
+Show upcoming routines with:
+
+- Routine name.
+- Start time.
+- End time.
+- Associated profile.
+- Status.
+
+## G. Focus Summary
+
+Display:
+
+- Total focus time.
+- Completed focus sessions.
+- Estimated interruptions.
+- Focus goal progress.
+
+## H. Recent Activity
+
+Show the latest simulated actions and their results.
+
+All dashboard controls must interact with the application's shared state.
+
+Dashboard data must update when profiles, routines, or focus sessions change.
+
+---
+
+# 8. SMART PROFILES
+
+Create a complete Smart Profiles management module.
+
+Initial profiles:
+
+1. Study.
+2. Work.
+3. Sleep.
+4. Personal.
+5. Custom.
+
+Each profile should contain:
+
+- Name.
+- Description.
+- Icon.
+- Accent color.
+- Simulated sound mode.
+- Allowed interruption categories.
+- Priority contact behavior.
+- Focus preferences.
+- Associated routines.
+
+## Profile operations
+
+Allow users to:
+
+- View profiles.
+- Activate a profile.
+- Create a custom profile.
+- Edit a profile.
+- Duplicate a profile.
+- Delete a custom profile.
+- Restore default profiles.
+
+Prevent deletion of protected default profiles unless the user first restores or disables them appropriately.
+
+Activating a profile should update the simulated phone state and dashboard.
+
+Display a clear confirmation or feedback message.
+
+Prevent conflicting profile activation.
+
+Only one profile should be active at a time.
+
+---
+
+# 9. SMART ROUTINES
+
+Build a complete Smart Routines module.
+
+A routine represents an automated sequence of phone-management actions.
+
+Each routine should contain:
+
+- Name.
+- Description.
+- Enabled/disabled status.
+- Trigger.
+- Conditions.
+- Actions.
+- Exceptions.
+- Priority.
+- Execution history.
+
+## Initial example routines
+
+Create realistic demonstration routines:
+
+### Study Time
+
+Trigger:
+Weekdays at 6:00 PM.
+
+Actions:
+- Activate Study Profile.
+- Set simulated sound mode to Silent.
+- Enable focus session.
+
+Exceptions:
+- Priority contacts.
+
+### Sleep Schedule
+
+Trigger:
+Every day at 11:00 PM.
+
+Actions:
+- Activate Sleep Profile.
+- Set simulated sound mode to Silent.
+- Enable sleep routine.
+
+Exceptions:
+- Emergency contacts.
+
+### Work Hours
+
+Trigger:
+Weekdays at 9:00 AM.
+
+Actions:
+- Activate Work Profile.
+- Reduce simulated interruptions.
+
+### Personal Time
+
+Trigger:
+Weekdays at 5:00 PM.
+
+Actions:
+- Activate Personal Profile.
+- Restore normal simulated sound mode.
+
+## Routine management
+
+Allow users to:
+
+- Create routines.
+- Edit routines.
+- Duplicate routines.
+- Enable and disable routines.
+- Delete routines.
+- Manually execute a routine.
+- View routine details.
+- View the last execution result.
+
+Every routine must have a clear visual status.
+
+---
+
+# 10. VISUAL RULE BUILDER
+
+Create an intuitive rule-building interface.
+
+Use this structure:
+
+WHEN → CONDITIONS → ACTIONS → EXCEPTIONS
+
+The rule builder must be interactive.
+
+## WHEN — Triggers
+
+Support these demo triggers:
+
+- Specific time.
+- Specific days.
+- Date and time.
+- Manual activation.
+- Focus session started.
+- Focus session ended.
+- Simulated location entered.
+- Simulated location exited.
+- Simulated activity started.
+- Simulated activity ended.
+
+## CONDITIONS
+
+Support:
+
+- Day of week.
+- Time range.
+- Active profile.
+- Automation status.
+- Simulated location.
+- Simulated activity.
+- Focus session status.
+
+## ACTIONS
+
+Support:
+
+- Activate a profile.
+- Set simulated sound mode.
+- Start a focus session.
+- End a focus session.
+- Pause automation.
+- Resume automation.
+- Show an in-app notification.
+- Record an activity event.
+
+## EXCEPTIONS
+
+Support:
+
+- Priority contacts.
+- Emergency contacts.
+- Specific days.
+- Time ranges.
+- Manually disabled rules.
+
+Provide a clear summary of the rule before saving.
+
+Allow users to test the rule using simulated inputs.
+
+Validate incomplete rules and show useful error messages.
+
+---
+
+# 11. AUTOMATION SIMULATION ENGINE
+
+This is one of the most important modules.
+
+Implement a real internal simulation engine.
+
+Do not make routines merely decorative cards.
+
+The engine should:
+
+1. Receive a simulated event.
+2. Identify matching routines.
+3. Evaluate trigger conditions.
+4. Check exceptions.
+5. Check routine priorities.
+6. Detect possible conflicts.
+7. Determine the resulting actions.
+8. Update application state.
+9. Generate activity logs.
+10. Display the execution result.
+
+## Conflict handling
+
+When multiple routines match:
+
+- Evaluate their conditions.
+- Use routine priority.
+- Detect conflicting actions.
+- Avoid executing contradictory actions blindly.
+- Explain which routine was selected and why.
+
+If a conflict cannot be resolved safely, request user confirmation.
+
+## Simulation controls
+
+Create a dedicated way to test automation.
+
+Let the user simulate:
+
+- Current time.
+- Day of week.
+- Entering a location.
+- Leaving a location.
+- Starting an activity.
+- Incoming call.
+- Incoming message.
+
+Show:
+
+- Trigger received.
+- Matching routines.
+- Conditions evaluated.
+- Exceptions checked.
+- Actions selected.
+- Final simulated result.
+
+The simulation engine must use the same application state as the rest of the app.
+
+---
+
+# 12. PRIORITY CONTACTS
+
+Create a dedicated contact-management module.
+
+The purpose is to help users define who matters most when they are focusing or using quiet profiles.
+
+Use synthetic demonstration contacts only.
+
+Each contact should contain:
+
+- Name.
+- Avatar or initials.
+- Relationship label.
+- Priority level.
+- Allowed interruption types.
+- Enabled status.
+
+## Priority levels
+
+- Emergency.
+- High Priority.
+- Normal.
+
+## Contact behavior
+
+Allow users to:
+
+- Add a contact.
+- Edit contact details.
+- Change priority.
+- Remove a contact.
+- Enable or disable priority status.
+- Choose allowed interruption scenarios.
+
+## Example scenarios
+
+- Allow calls from emergency contacts during Study Mode.
+- Allow calls from high-priority contacts during Work Mode.
+- Allow emergency contacts during Sleep Mode.
+- Allow repeat callers in a simulated emergency scenario.
+
+Create a simulated incoming-call and incoming-message testing interface.
+
+The user should be able to select a contact and test whether the simulated interruption would be allowed or blocked under the active profile.
+
+Display the decision and its explanation.
+
+Do not access the real contacts database in this demo.
+
+Do not intercept real calls or messages.
+
+---
+
+# 13. NOTIFICATION INTELLIGENCE
+
+Create a Notification Intelligence module.
+
+Its purpose is to help users understand their notification patterns and reduce unnecessary interruptions.
+
+Use realistic synthetic notification data.
+
+Do not access actual notifications.
+
+## Dashboard metrics
+
+Display:
+
+- Total simulated notifications.
+- Notifications by application.
+- Notifications by category.
+- Most active time periods.
+- Estimated interruption frequency.
+- Important versus non-important notifications.
+
+## Categories
+
+- Communication.
+- Social Media.
+- Work.
+- Education.
+- Entertainment.
+- System.
+- Other.
+
+## Features
+
+Allow users to:
+
+- Filter notification analytics by time period.
+- Explore application-level statistics.
+- View notification category distribution.
+- Identify high-interruption periods.
+- See suggested focus improvements.
+
+Create charts that are readable and meaningful.
+
+Label all information as demonstration data.
+
+---
+
+# 14. CONTEXT AWARENESS
+
+Create a Context Awareness module.
+
+Its purpose is to allow Smart Companion to adapt its behavior to the user's simulated environment.
+
+## Context types
+
+### Time Context
+
+- Morning.
+- Afternoon.
+- Evening.
+- Night.
+- Custom time ranges.
+
+### Location Context
+
+Use simulated locations:
+
+- Home.
+- University.
+- Workplace.
+- Library.
+- Custom location.
+
+### Activity Context
+
+- Studying.
+- Working.
+- Sleeping.
+- Driving.
+- Personal time.
+- Custom activity.
+
+## Features
+
+Allow users to:
+
+- Select a simulated current location.
+- Select a simulated current activity.
+- Change simulated time.
+- View the current context.
+- See which routines match the current context.
+- Test context changes.
+- Review the resulting automation decisions.
+
+Do not request real location permissions.
+
+Do not track the user's actual location.
+
+Make the simulation explicit.
+
+---
+
+# 15. AI ASSISTANT
+
+Create a polished AI Assistant experience.
+
+The assistant should help users manage routines and phone behavior using natural language.
+
+For this demo, implement a local intelligent simulation without requiring an external AI API.
+
+Do not display fake claims that an external AI model is connected.
+
+## Chat interface
+
+Include:
+
+- Conversational layout.
+- Message history.
+- User messages.
+- Assistant responses.
+- Suggested prompts.
+- Loading animation.
+- Clear conversation action.
+
+## Example user prompts
+
+- "Keep my phone silent while I'm studying."
+- "Let my family call me even when I'm sleeping."
+- "Create a routine for university days."
+- "Stop unnecessary interruptions after 11 PM."
+- "Start a 45-minute focus session."
+- "What are my most distracting applications?"
+- "Why did my phone switch to silent mode?"
+
+## Assistant capabilities
+
+The demo assistant should recognize common intents.
+
+It should be able to:
+
+1. Identify the user's goal.
+2. Understand the requested trigger.
+3. Identify the desired action.
+4. Identify relevant exceptions.
+5. Build a structured routine proposal.
+6. Explain the proposal.
+7. Request user confirmation.
+8. Create the routine after confirmation.
+
+## Example interaction
+
+User:
+"Keep my phone silent every day from 8 PM to 10 PM, but allow emergency contacts."
+
+Assistant:
+"I can create a routine with the following configuration:
+
+- Trigger: Every day at 8 PM.
+- End time: 10 PM.
+- Action: Activate simulated Silent Mode.
+- Exception: Emergency contacts.
+
+Would you like to create this routine?"
+
+Provide:
+
+- Confirm.
+- Edit.
+- Cancel.
+
+Only create the routine after confirmation.
+
+## Assistant intelligence
+
+The assistant should also answer questions about:
+
+- Active profiles.
+- Existing routines.
+- Focus statistics.
+- Notification patterns.
+- Recent activity.
+- Automation decisions.
+
+Use actual local application state when answering.
+
+When the request is outside the demo assistant's supported capabilities, explain the limitation instead of inventing an answer.
+
+Keep the assistant architecture ready for future integration with a real Gemini API.
+
+---
+
+# 16. FOCUS SESSIONS
+
+Create a dedicated Focus Session feature.
+
+Allow users to:
+
+- Start a focus session.
+- Select duration.
+- Choose a profile.
+- Pause the session.
+- Resume the session.
+- End the session.
+- View session history.
+
+Suggested durations:
+
+- 25 minutes.
+- 45 minutes.
+- 60 minutes.
+- Custom duration.
+
+Show:
+
+- Countdown timer.
+- Progress indicator.
+- Session status.
+- Focus profile.
+- Simulated interruption count.
+
+When a focus session starts:
+
+- Activate the selected profile if requested.
+- Update simulated sound mode.
+- Record the event.
+- Update dashboard statistics.
+
+When a focus session ends:
+
+- Record completion.
+- Update focus statistics.
+- Offer a short summary.
+
+The timer should work correctly while the application is open.
+
+Clearly handle pausing, resuming, and ending sessions.
+
+---
+
+# 17. ACTIVITY HISTORY
+
+Create a complete Activity History module.
+
+Every important action should generate an activity event.
+
+Examples:
+
+- Profile activated.
+- Routine executed.
+- Routine skipped.
+- Automation paused.
+- Automation resumed.
+- Simulated sound mode changed.
+- Focus session started.
+- Focus session completed.
+- Contact exception applied.
+- Context changed.
+- Rule conflict detected.
+- Assistant created a routine.
+
+Each event should contain:
+
+- Event title.
+- Timestamp.
+- Event category.
+- Trigger source.
+- Result.
+- Explanation.
+- Related routine or profile when applicable.
+
+## History features
+
+- Chronological timeline.
+- Search.
+- Filters.
+- Date grouping.
+- Event details.
+- Clear history with confirmation.
+
+The activity history must reflect actual events generated by the demo.
+
+Do not fill it with unrelated static text.
+
+---
+
+# 18. INSIGHTS AND ANALYTICS
+
+Create a useful Insights module.
+
+Its purpose is to help users understand their focus and interruption behavior.
+
+Include:
+
+## Focus Analytics
+
+- Total focus time.
+- Average daily focus time.
+- Completed focus sessions.
+- Focus goal progress.
+- Daily focus trend.
+
+## Interruption Analytics
+
+- Total simulated interruptions.
+- Allowed interruptions.
+- Blocked interruptions.
+- Interruption categories.
+- Most active interruption periods.
+
+## Automation Analytics
+
+- Total routine executions.
+- Successful executions.
+- Skipped routines.
+- Detected conflicts.
+- Most frequently used profiles.
+
+## Recommendations
+
+Show practical recommendations based on the demonstration data.
+
+Examples:
+
+- Your most distracting period is between 7 PM and 9 PM.
+- Consider enabling Study Mode during your scheduled study hours.
+- Your Sleep routine is successfully configured.
+- You may want to add a priority contact.
+
+Use understandable charts and concise explanations.
+
+All charts must use actual application data or clearly identified seeded demo data.
+
+---
+
+# 19. SAFETY AND RECOVERY CENTER
+
+Create a dedicated Safety Center.
+
+Safety is a core product feature, not an optional decoration.
+
+Include:
+
+## Global Pause
+
+A single control that pauses all automation.
+
+## Manual Override
+
+Allow users to manually change the simulated phone state even when a profile or routine is active.
+
+## Restore Previous State
+
+Allow users to restore the previous simulated state.
+
+## Conflict Warnings
+
+Show when two routines could produce conflicting actions.
+
+## Confirmation Requirements
+
+Require confirmation before:
+
+- Deleting important routines.
+- Deleting contacts.
+- Clearing activity history.
+- Resetting demo data.
+- Performing major state changes.
+
+## Emergency Access Simulation
+
+Provide a way to test emergency contact behavior.
+
+## Recovery
+
+Include:
+
+- Restore default profiles.
+- Reset all demo routines.
+- Restore demo data.
+- Reset the entire demo application.
+
+Never silently perform destructive operations.
+
+---
+
+# 20. SETTINGS
+
+Create a complete Settings page.
+
+Include:
+
+## Appearance
+
+- Light Mode.
+- Dark Mode.
+- System Default.
+
+## Language
+
+- English.
+- Arabic.
+
+The interface should support proper right-to-left layout when Arabic is selected.
+
+## Automation Preferences
+
+- Enable or pause automation.
+- Enable confirmation for important actions.
+- Default profile behavior.
+- Routine conflict preferences.
+
+## Privacy
+
+Explain clearly that this demo:
+
+- Uses synthetic demonstration data.
+- Does not read real notifications.
+- Does not access real contacts.
+- Does not track actual location.
+- Does not change real phone sound settings.
+
+## Demo Management
+
+- View demo status.
+- Reset demo data.
+- Restore default configuration.
+
+## About
+
+- Smart Companion name.
+- Product tagline.
+- Version information.
+- Demo version label.
+
+Do not add a Design System editor to Settings.
+
+---
+
+# 21. DEMONSTRATION DATA
+
+Seed the application with realistic data.
+
+Create:
+
+- Five default smart profiles.
+- At least four example routines.
+- At least six synthetic priority contacts.
+- Multiple notification categories.
+- A realistic notification analytics dataset.
+- At least ten activity events.
+- Several focus sessions.
+- Example context states.
+- Example routine conflicts.
+
+The initial application must look populated and ready to demonstrate immediately after launch.
+
+The user must be able to reset all data to the original demo state.
+
+---
+
+# 22. IMPORTANT DEMO SCENARIOS
+
+Create a dedicated Demo Playground or Scenario Testing area.
+
+The purpose is to let someone demonstrate the product without configuring everything manually.
+
+Include these scenarios:
+
+## Scenario 1: Study Time
+
+- Activate Study Profile.
+- Start a study routine.
+- Simulate an incoming call from a normal contact.
+- Show that the interruption is blocked in the simulation.
+- Simulate an incoming call from an emergency contact.
+- Show that the exception is allowed.
+- Record both decisions.
+
+## Scenario 2: Sleep Protection
+
+- Activate Sleep Profile.
+- Simulate the sleep schedule.
+- Simulate a normal incoming message.
+- Simulate an emergency contact call.
+- Show the different decisions.
+
+## Scenario 3: Smart Scheduling
+
+- Simulate reaching the scheduled Work time.
+- Find matching routines.
+- Execute the appropriate routine.
+- Update the dashboard.
+- Record the execution.
+
+## Scenario 4: AI Routine Creation
+
+- Enter a natural-language request.
+- Let the assistant generate a structured routine proposal.
+- Review the proposed trigger, action, and exception.
+- Confirm creation.
+- Verify that the routine appears in Smart Routines.
+
+## Scenario 5: Conflict Resolution
+
+- Create two routines with conflicting actions.
+- Simulate a matching event.
+- Show the conflict.
+- Explain the decision.
+- Allow the user to resolve it.
+
+## Scenario 6: Global Pause and Recovery
+
+- Enable multiple routines.
+- Activate Global Pause.
+- Verify that simulated automation stops.
+- Restore automation.
+- Verify the previous configuration.
+
+All scenarios must be executable through the UI.
+
+---
+
+# 23. FUNCTIONAL AND TECHNICAL REQUIREMENTS
+
+The application must be a real interactive prototype, not a collection of static screens.
+
+Requirements:
+
+- All navigation works.
+- All buttons have meaningful actions.
+- Forms validate input.
+- Dialogs work.
+- Lists update after create, edit, and delete operations.
+- Dashboard values update after actions.
+- Routine execution generates activity events.
+- Profiles and routines share consistent state.
+- Contact exceptions affect simulated decisions.
+- Focus sessions update analytics.
+- Theme preference persists.
+- Language preference persists.
+- Important data persists locally.
+- Empty states are handled.
+- Error states are handled.
+- Loading states are handled.
+- No broken navigation.
+- No placeholder buttons.
+- No unnecessary duplicate screens.
+
+Use realistic interactions and helpful feedback messages.
+
+Keep the application responsive and smooth.
+
+---
+
+# 24. DATA CONSISTENCY
+
+All modules must use a shared source of application state.
+
+For example:
+
+When a user activates Study Profile:
+
+- Dashboard must show Study as active.
+- Simulated phone status must update.
+- Activity History must record the activation.
+- Related routine information must remain consistent.
+- Insights must reflect relevant events.
+
+When a user creates a routine through the Assistant:
+
+- The routine must appear in Smart Routines.
+- The routine must be editable.
+- The simulation engine must be able to evaluate it.
+- Its execution must generate history events.
+
+Do not create separate disconnected demo states for different screens.
+
+---
+
+# 25. TESTING AND QUALITY CONTROL
+
+Before considering the application complete, test the main user journeys.
+
+Test:
+
+1. First launch and onboarding.
+2. Navigation across every screen.
+3. Light and Dark themes.
+4. Arabic and English layout.
+5. Profile creation and activation.
+6. Routine creation and editing.
+7. Rule Builder validation.
+8. Simulation Engine execution.
+9. Priority contact exceptions.
+10. Notification analytics.
+11. Context simulation.
+12. Assistant routine proposal and confirmation.
+13. Focus session timer.
+14. Activity History updates.
+15. Insights updates.
+16. Global Pause.
+17. Conflict detection.
+18. Recovery and reset.
+19. Data persistence after app restart.
+
+Fix crashes and major UI issues.
+
+Do not leave critical features as non-functional placeholders.
+
+---
+
+# 26. STRICT SCOPE BOUNDARIES
+
+This version is an interactive Android demo.
+
+Do not:
+
+- Claim to control real Android Silent Mode.
+- Claim to intercept real calls.
+- Claim to block actual notifications.
+- Access real contacts.
+- Track actual location.
+- Run hidden background automation.
+- Request unnecessary permissions.
+- Add fake AI API connectivity.
+- Require paid APIs.
+- Require account registration.
+- Add an unnecessary subscription or payment system.
+- Add a user-facing Design System editor.
+
+All simulated functionality must be clearly identified as simulation.
+
+The app should be structured so that future versions can integrate real Android capabilities with explicit user permissions and appropriate platform APIs.
+
+---
+
+# 27. FINAL EXPECTATION
+
+Deliver a polished, coherent, fully interactive Smart Companion Android demo.
+
+It should feel like a product that can be shown to:
+
+- Potential users.
+- University colleagues.
+- Product designers.
+- Developers.
+- Potential investors.
+
+Prioritize:
+
+1. Functional completeness.
+2. Consistent application state.
+3. High-quality UI.
+4. Smooth user experience.
+5. Reliable demo scenarios.
+6. Maintainable architecture.
+
+Do not stop after generating the Dashboard.
+
+Build all requested modules and connect them.
+
+If the implementation is too large for one generation pass, work incrementally inside the same project while preserving the architecture and existing code.
+
+Do not remove completed functionality when continuing.
+
+At the end, provide:
+
+- A summary of implemented modules.
+- A list of working demo scenarios.
+- Any incomplete functionality.
+- Instructions for testing the application in the emulator.
+- Instructions for installing it on a physical Android device using ADB.
+
+The final result must be a complete interactive demonstration of Smart Companion.

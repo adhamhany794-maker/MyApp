@@ -1,0 +1,441 @@
+package com.example.assistant
+
+import com.example.models.ActionType
+import com.example.models.ActivityEvent
+import com.example.models.AppLanguage
+import com.example.models.ConditionType
+import com.example.models.DayFilter
+import com.example.models.ExceptionType
+import com.example.models.FocusSessionRecord
+import com.example.models.NotificationStat
+import com.example.models.PriorityContact
+import com.example.models.RoutineProposal
+import com.example.models.RuleAction
+import com.example.models.RuleCondition
+import com.example.models.RuleException
+import com.example.models.RuleTrigger
+import com.example.models.SimulatedActivity
+import com.example.models.SimulatedLocation
+import com.example.models.SmartProfile
+import com.example.models.SmartRoutine
+import com.example.models.SoundMode
+import com.example.models.TriggerType
+import com.example.utils.TimeUtils
+import java.util.UUID
+
+data class AssistantStateSnapshot(
+    val language: AppLanguage = AppLanguage.ENGLISH,
+    val activeProfile: SmartProfile,
+    val soundMode: SoundMode,
+    val isAutomationPaused: Boolean,
+    val routines: List<SmartRoutine>,
+    val contacts: List<PriorityContact>,
+    val notificationStats: List<NotificationStat>,
+    val focusSessions: List<FocusSessionRecord>,
+    val recentEvents: List<ActivityEvent>
+)
+
+data class AssistantReply(
+    val text: String,
+    val proposal: RoutineProposal? = null,
+    val focusMinutesToStart: Int? = null
+)
+
+/**
+ * Abstraction designed so a future version can plug in a real Gemini API backend
+ * without modifying the Assistant UI or ViewModel contract.
+ */
+interface CompanionAssistantEngine {
+    suspend fun processPrompt(prompt: String, state: AssistantStateSnapshot): AssistantReply
+}
+
+class LocalDemoAssistantEngine : CompanionAssistantEngine {
+
+    override suspend fun processPrompt(
+        prompt: String,
+        state: AssistantStateSnapshot
+    ): AssistantReply {
+        val lower = prompt.lowercase().trim()
+        val isArabic = state.language == AppLanguage.ARABIC || containsArabic(prompt)
+
+        // 1. Focus session intent (EN & AR)
+        val isFocusIntent = (lower.contains("focus") || lower.contains("تركيز")) &&
+            (lower.contains("start") || lower.contains("begin") || lower.contains("session") ||
+                lower.contains("ابدأ") || lower.contains("جلسة"))
+        if (isFocusIntent) {
+            val mins = extractNumber(lower) ?: 45
+            val text = if (isArabic) {
+                "جاري بدء جلسة تركيز محاكاة لمدة $mins دقيقة باستخدام وضع الدراسة حتى تبقى الإشعارات المزعجة مكتومة مع حماية جهات الأولوية."
+            } else {
+                "Starting a $mins-minute simulated focus session using your Study Profile so distractions stay muted while priority exceptions remain protected."
+            }
+            return AssistantReply(text = text, focusMinutesToStart = mins)
+        }
+
+        // 2. Most distracting apps question (EN & AR)
+        val isDistractingAppsIntent = lower.contains("distracting") ||
+            lower.contains("most notifications") ||
+            lower.contains("تطبيقات") ||
+            lower.contains("إزعاج") ||
+            (lower.contains("app") && lower.contains("most"))
+        if (isDistractingAppsIntent) {
+            val topApps = state.notificationStats
+                .groupBy { it.appName }
+                .mapValues { (_, list) -> list.maxOf { it.totalCount } to list.maxOf { it.blockedCount } }
+                .entries
+                .sortedByDescending { it.value.first }
+                .take(3)
+            val lines = topApps.joinToString("\n") { (app, counts) ->
+                if (isArabic) {
+                    "• $app: ${counts.first} تنبيه محاكى (تم حجب ${counts.second} أثناء الأوضاع الهادئة)"
+                } else {
+                    "• $app: ${counts.first} simulated alerts (${counts.second} blocked during quiet profiles)"
+                }
+            }
+            val text = if (isArabic) {
+                "استناداً إلى بيانات العرض الحالية، أكثر التطبيقات مقاطعة لديك:\n\n$lines\n\nنصيحة: تحدث معظم التنبيهات الاجتماعية بين 7:00 م و 9:00 م."
+            } else {
+                "Based on your current demonstration analytics, your highest-interruption apps are:\n\n$lines\n\nTip: Most social spikes occur between 7:00 PM and 9:00 PM."
+            }
+            return AssistantReply(text = text)
+        }
+
+        // 3. Why did my phone switch to silent / active profile question (EN & AR)
+        val isWhySilentIntent = (lower.contains("why") || lower.contains("لماذا")) &&
+            (lower.contains("silent") || lower.contains("mode") || lower.contains("profile") ||
+                lower.contains("switch") || lower.contains("صامت") || lower.contains("الوضع"))
+        if (isWhySilentIntent) {
+            val latestSoundOrProfile = state.recentEvents.firstOrNull {
+                it.title.contains("Silent", ignoreCase = true) ||
+                    it.title.contains("Profile", ignoreCase = true) ||
+                    it.title.contains("Routine", ignoreCase = true)
+            }
+            val text = if (isArabic) {
+                val reason = if (latestSoundOrProfile != null) {
+                    "آخر حدث مسجل كان \"${latestSoundOrProfile.title}\" (${latestSoundOrProfile.triggerSource}): ${latestSoundOrProfile.explanation}"
+                } else {
+                    "الوضع النشط حالياً هو ${state.activeProfile.name} مع صوت محاكى: ${state.soundMode.arabicName}."
+                }
+                "الحالة المحاكاة الحالية: ${state.activeProfile.name} (${state.soundMode.arabicName}).\n\n$reason"
+            } else {
+                val reason = if (latestSoundOrProfile != null) {
+                    "Your latest recorded event was \"${latestSoundOrProfile.title}\" (${latestSoundOrProfile.triggerSource}): ${latestSoundOrProfile.explanation}"
+                } else {
+                    "Your active profile is ${state.activeProfile.name} with simulated sound mode set to ${state.soundMode.displayName}."
+                }
+                "Current simulated state: ${state.activeProfile.name} (${state.soundMode.displayName}).\n\n$reason"
+            }
+            return AssistantReply(text = text)
+        }
+
+        // 4. Daily activity overview or focus/routine stats Q&A (EN & AR)
+        val isDailyActivityQuery = lower.contains("daily activity") ||
+            lower.contains("my activity") ||
+            lower.contains("today's overview") ||
+            lower.contains("نشاطي") ||
+            lower.contains("ملخص اليوم") ||
+            (lower.contains("show") && lower.contains("activity"))
+        if (isDailyActivityQuery) {
+            val totalMins = state.focusSessions.sumOf { it.completedMinutes }
+            val executedCount = state.routines.sumOf { it.executionCount }
+            val recentLines = state.recentEvents.take(3).joinToString("\n") { "• ${it.title} — ${it.result}" }
+            val text = if (isArabic) {
+                "ملخص نشاطك اليومي المحاكى:\n" +
+                    "• الوضع النشط: ${state.activeProfile.name} (${state.soundMode.arabicName})\n" +
+                    "• وقت التركيز المسجل: ${TimeUtils.formatDurationMinutes(totalMins, true)}\n" +
+                    "• مرات تنفيذ الروتين: $executedCount\n\n" +
+                    "أحدث الأحداث:\n$recentLines"
+            } else {
+                "Here is your simulated daily overview:\n" +
+                    "• Active Profile: ${state.activeProfile.name} (${state.soundMode.displayName})\n" +
+                    "• Recorded Focus Time: ${TimeUtils.formatDurationMinutes(totalMins)}\n" +
+                    "• Routine Executions: $executedCount\n\n" +
+                    "Latest activity:\n$recentLines"
+            }
+            return AssistantReply(text = text)
+        }
+
+        val isStatsOrRoutinesQuery = (lower.contains("how") && lower.contains("focus")) ||
+            (lower.contains("routine") && (lower.contains("active") || lower.contains("list") || lower.contains("which"))) ||
+            (lower.contains("روتين") && (lower.contains("نشط") || lower.contains("ما هي")))
+        if (isStatsOrRoutinesQuery) {
+            val totalMins = state.focusSessions.sumOf { it.completedMinutes }
+            val enabledNames = state.routines.filter { it.isEnabled }.joinToString(", ") { it.name }
+            val text = if (isArabic) {
+                "لديك حالياً ${state.routines.count { it.isEnabled }} روتينات مفعّلة ($enabledNames).\n\nإجمالي وقت التركيز المسجل: ${TimeUtils.formatDurationMinutes(totalMins, true)} عبر ${state.focusSessions.size} جلسات."
+            } else {
+                "You currently have ${state.routines.count { it.isEnabled }} active routines ($enabledNames).\n\nTotal recorded focus time: ${TimeUtils.formatDurationMinutes(totalMins)} across ${state.focusSessions.size} sessions. Automation is ${if (state.isAutomationPaused) "Paused" else "Enabled"}."
+            }
+            return AssistantReply(text = text)
+        }
+
+        // 5. Out-of-scope external requests (EN & AR)
+        if (lower.contains("weather") || lower.contains("stock") || lower.contains("الطقس") ||
+            (lower.contains("email") && lower.contains("send")) || lower.contains("install")
+        ) {
+            val text = if (isArabic) {
+                "أنا مساعد عرض محلي بدون إنترنت مخصص لأوضاع وروتينات المرافق الذكي فقط. الاستعلامات الخارجية أو تعديل النظام الفعلي خارج نطاق هذا العرض."
+            } else {
+                "I am a local offline demo assistant focused on Smart Companion profiles, routines, focus sessions, and interruption analytics. External web queries and real OS controls are outside this demo's offline scope."
+            }
+            return AssistantReply(text = text)
+        }
+
+        // 6. Natural-language Routine Creation Proposals (EN & AR)
+        if (isRoutineCreationIntent(lower)) {
+            val proposal = buildRoutineProposal(prompt, lower, isArabic)
+            val text = if (isArabic) {
+                "يمكنني إنشاء روتين بالإعدادات التالية:\n\n" +
+                    "• الاسم: ${proposal.routine.name}\n" +
+                    "• المُشغّل: ${proposal.triggerSummary}\n" +
+                    "• وقت الانتهاء: ${proposal.endTimeLabel}\n" +
+                    "• الإجراء: ${proposal.actionSummary}\n" +
+                    "• الاستثناء: ${proposal.exceptionSummary}\n\n" +
+                    "هل تريد مراجعة هذا الروتين أو تأكيد إنشائه؟"
+            } else {
+                "I can create a routine with the following configuration:\n\n" +
+                    "• Name: ${proposal.routine.name}\n" +
+                    "• Trigger: ${proposal.triggerSummary}\n" +
+                    "• End time: ${proposal.endTimeLabel}\n" +
+                    "• Action: ${proposal.actionSummary}\n" +
+                    "• Exception: ${proposal.exceptionSummary}\n\n" +
+                    "Would you like to review or confirm creating this routine?"
+            }
+            return AssistantReply(text = text, proposal = proposal)
+        }
+
+        val fallback = if (isArabic) {
+            "يمكنني مساعدتك في إنشاء روتين ذكي (مثلاً: \"اكتم الإشعارات يومياً من 8 مساءً إلى 10 مساءً مع السماح بجهات الطوارئ\")، أو بدء جلسة تركيز، أو تفسير حالة هاتفك المحاكاة."
+        } else {
+            "I can help you create smart routines (for example: \"Create a study routine\"), start focus sessions, or explain why your simulated phone status changed. Try one of the suggested commands below!"
+        }
+        return AssistantReply(text = fallback)
+    }
+
+    private fun containsArabic(text: String): Boolean {
+        return text.any { ch -> ch in '\u0600'..'\u06FF' }
+    }
+
+    private fun isRoutineCreationIntent(lower: String): Boolean {
+        val keywords = listOf(
+            "silent", "mute", "quiet", "routine", "study", "studying",
+            "sleep", "sleeping", "university", "work", "allow", "family",
+            "emergency", "stop", "interruptions", "pm", "am", "schedule",
+            "organize", "create",
+            "صامت", "اكتم", "كتم", "هدوء", "روتين", "دراسة", "الدراسة",
+            "نوم", "النوم", "نومي", "تنظيم", "جدول", "جامعة", "الجامعة", "عمل",
+            "عائلة", "عائلتي", "طوارئ", "اسمح", "سماح", "مساء", "صباح", "إشعارات"
+        )
+        return keywords.count { lower.contains(it) } >= 2 ||
+            lower.contains("create a routine") ||
+            lower.contains("keep my phone") ||
+            lower.contains("make my phone") ||
+            lower.contains("اجعل هاتفي") ||
+            lower.contains("أنشئ روتين")
+    }
+
+    private fun buildRoutineProposal(
+        original: String,
+        lower: String,
+        isArabic: Boolean
+    ): RoutineProposal {
+        val isStudy = lower.contains("study") || lower.contains("studying") || lower.contains("library") ||
+            lower.contains("دراسة") || lower.contains("مكتبة")
+        val isUniversity = lower.contains("university") || lower.contains("campus") || lower.contains("class") ||
+            lower.contains("جامعة")
+        val isSleep = lower.contains("sleep") || lower.contains("sleeping") || lower.contains("11 pm") ||
+            lower.contains("bed") || lower.contains("نوم")
+        val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
+
+        val extractedHours = extractTimeHours(lower)
+        val startHour = when {
+            extractedHours.isNotEmpty() -> extractedHours.first()
+            isSleep -> 23
+            isStudy -> 18
+            isUniversity -> 9
+            isWork -> 9
+            else -> 20
+        }
+        val endHour = when {
+            extractedHours.size >= 2 -> extractedHours[1]
+            isSleep -> 7
+            else -> (startHour + 2) % 24
+        }
+
+        val dayFilter = when {
+            lower.contains("every day") || lower.contains("daily") || lower.contains("يومياً") || lower.contains("كل يوم") ->
+                DayFilter.EVERY_DAY
+            lower.contains("weekend") || lower.contains("عطلة") -> DayFilter.WEEKENDS
+            lower.contains("weekday") || isUniversity || isWork -> DayFilter.WEEKDAYS
+            else -> DayFilter.EVERY_DAY
+        }
+
+        val soundMode = when {
+            lower.contains("vibrate") || lower.contains("اهتزاز") -> SoundMode.VIBRATE
+            lower.contains("normal") || lower.contains("صوت") -> SoundMode.SOUND
+            else -> SoundMode.SILENT
+        }
+
+        val allowEmergency = lower.contains("emergency") || lower.contains("family") ||
+            lower.contains("طوارئ") || lower.contains("عائل") || isSleep
+        val allowPriority = lower.contains("priority") || lower.contains("family") ||
+            lower.contains("important") || lower.contains("أولوية") || lower.contains("عائل")
+
+        val profileId = when {
+            isSleep -> "profile_sleep"
+            isStudy || isUniversity -> "profile_study"
+            isWork -> "profile_work"
+            else -> "profile_study"
+        }
+
+        val profileLabel = if (isArabic) {
+            when (profileId) {
+                "profile_sleep" -> "وضع النوم"
+                "profile_work" -> "وضع العمل"
+                else -> "وضع الدراسة"
+            }
+        } else {
+            when (profileId) {
+                "profile_sleep" -> "Sleep Profile"
+                "profile_work" -> "Work Profile"
+                else -> "Study Profile"
+            }
+        }
+
+        val routineName = if (isArabic) {
+            when {
+                isUniversity -> "أيام الجامعة المركزة"
+                isSleep -> "حماية الهدوء الليلي"
+                isStudy -> "هدوء وقت الدراسة"
+                isWork -> "تركيز ساعات العمل"
+                else -> "ساعات الهدوء المسائية"
+            }
+        } else {
+            when {
+                isUniversity -> "University Focus Days"
+                isSleep -> "Night Quiet Protection"
+                isStudy -> "Focused Study Silence"
+                isWork -> "Workday Deep Focus"
+                else -> "Evening Quiet Hours"
+            }
+        }
+
+        val trigger = when {
+            isUniversity -> RuleTrigger(
+                type = TriggerType.LOCATION_ENTERED,
+                hour = startHour,
+                minute = 0,
+                dayFilter = dayFilter,
+                location = SimulatedLocation.UNIVERSITY,
+                summary = if (isArabic) "الموقع المحاكى: الجامعة" else "Simulated location: University (${dayFilter.label})"
+            )
+            lower.contains("while i'm studying") || lower.contains("while studying") || lower.contains("أثناء الدراسة") -> RuleTrigger(
+                type = TriggerType.ACTIVITY_STARTED,
+                hour = startHour,
+                minute = 0,
+                dayFilter = dayFilter,
+                activity = SimulatedActivity.STUDYING,
+                summary = if (isArabic) "النشاط المحاكى: الدراسة" else "Simulated activity: Studying"
+            )
+            else -> RuleTrigger(
+                type = TriggerType.SPECIFIC_TIME,
+                hour = startHour,
+                minute = 0,
+                dayFilter = dayFilter,
+                summary = if (isArabic) {
+                    "يومياً الساعة ${TimeUtils.formatTime12h(startHour, 0, true)}"
+                } else {
+                    "${dayFilter.label} at ${TimeUtils.formatTime12h(startHour, 0)}"
+                }
+            )
+        }
+
+        val triggerSummary = trigger.summary
+        val endTimeLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)
+        val soundLabel = if (isArabic) soundMode.arabicName else soundMode.displayName
+        val actionSummary = if (isArabic) {
+            "تفعيل $profileLabel ووضع الصوت المحاكى ($soundLabel)"
+        } else {
+            "Activate $profileLabel & simulated $soundLabel Mode"
+        }
+        val exceptionSummary = if (isArabic) {
+            when {
+                allowEmergency && allowPriority -> "جهات الطوارئ والأولوية"
+                allowEmergency -> "جهات الطوارئ"
+                allowPriority -> "جهات الأولوية"
+                else -> "لا يوجد"
+            }
+        } else {
+            when {
+                allowEmergency && allowPriority -> "Emergency & Priority contacts"
+                allowEmergency -> "Emergency contacts"
+                allowPriority -> "Priority contacts"
+                else -> "None"
+            }
+        }
+
+        val exceptions = buildList {
+            if (allowEmergency) add(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts"))
+            if (allowPriority) add(RuleException(ExceptionType.PRIORITY_CONTACTS, "Allow Priority contacts"))
+        }
+
+        val routine = SmartRoutine(
+            id = "routine_ai_${UUID.randomUUID().toString().take(6)}",
+            name = routineName,
+            description = if (isArabic) "تم إنشاؤه من الطلب: \"$original\"" else "Created from prompt: \"$original\"",
+            isEnabled = true,
+            trigger = trigger,
+            conditions = listOf(RuleCondition(ConditionType.AUTOMATION_ENABLED, "Enabled")),
+            actions = listOf(
+                RuleAction(ActionType.ACTIVATE_PROFILE, profileId, "Activate $profileLabel"),
+                RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated ${soundMode.displayName} Mode")
+            ),
+            exceptions = exceptions,
+            priority = 8,
+            scheduleStartTime = TimeUtils.formatTime12h(startHour, 0, isArabic),
+            scheduleEndTime = endTimeLabel,
+            targetProfileId = profileId,
+            lastExecutionResult = if (isArabic) "تم الإنشاء عبر المساعد — جاهز للاختبار" else "Created via Assistant — ready to test",
+            lastExecutedAtMillis = null,
+            executionCount = 0,
+            skippedCount = 0
+        )
+
+        return RoutineProposal(
+            routine = routine,
+            triggerSummary = triggerSummary,
+            endTimeLabel = endTimeLabel,
+            actionSummary = actionSummary,
+            exceptionSummary = exceptionSummary
+        )
+    }
+
+    private fun extractNumber(text: String): Int? {
+        val match = Regex("(\\d+)\\s*(min|minute|minutes|m|د|دقيقة)?").find(text)
+        return match?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(5, 180)
+    }
+
+    private fun extractTimeHours(text: String): List<Int> {
+        val enMatches = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)").findAll(text).mapNotNull { m ->
+            val rawHour = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val period = m.groupValues[3].lowercase()
+            when {
+                period == "pm" && rawHour < 12 -> rawHour + 12
+                period == "am" && rawHour == 12 -> 0
+                else -> rawHour.coerceIn(0, 23)
+            }
+        }.toList()
+        if (enMatches.isNotEmpty()) return enMatches
+
+        val arMatches = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(صباحاً|صباحا|مساءً|مساء)").findAll(text).mapNotNull { m ->
+            val rawHour = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val period = m.groupValues[3]
+            when {
+                period.startsWith("مساء") && rawHour < 12 -> rawHour + 12
+                period.startsWith("صباح") && rawHour == 12 -> 0
+                else -> rawHour.coerceIn(0, 23)
+            }
+        }.toList()
+        return arMatches
+    }
+}

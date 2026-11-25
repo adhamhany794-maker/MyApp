@@ -1,0 +1,1400 @@
+package com.example.viewmodels
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.assistant.AssistantStateSnapshot
+import com.example.assistant.CompanionAssistantEngine
+import com.example.assistant.LocalDemoAssistantEngine
+import com.example.data.AppPreferences
+import com.example.models.ActiveFocusSession
+import com.example.models.ActivityEvent
+import com.example.models.AppLanguage
+import com.example.models.AssistantMessage
+import com.example.models.ConflictResolutionPolicy
+import com.example.models.DayFilter
+import com.example.models.EventCategory
+import com.example.models.FocusSessionRecord
+import com.example.models.InterruptionDecision
+import com.example.models.InterruptionType
+import com.example.models.NotificationStat
+import com.example.models.PriorityContact
+import com.example.models.RoutineProposal
+import com.example.models.SimulatedActivity
+import com.example.models.SimulatedLocation
+import com.example.models.SimulationContextState
+import com.example.models.SimulationTrace
+import com.example.models.SmartProfile
+import com.example.models.SmartRoutine
+import com.example.models.SoundMode
+import com.example.models.ThemeMode
+import com.example.repositories.SmartCompanionRepository
+import com.example.simulation.AutomationSimulationEngine
+import com.example.simulation.DeviceActionCommand
+import com.example.simulation.DeviceActionExecutor
+import com.example.simulation.EngineEvaluationOutput
+import com.example.simulation.SimulatedDeviceActionExecutor
+import com.example.simulation.SimulationEvent
+import com.example.utils.TimeUtils
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+data class PendingConflictPrompt(
+    val trace: SimulationTrace,
+    val candidateRoutines: List<SmartRoutine>,
+    val triggerLabel: String
+)
+
+data class DemoScenarioStepResult(
+    val scenarioTitle: String,
+    val steps: List<String>,
+    val finalOutcome: String
+)
+
+data class SmartCompanionUiState(
+    val isReady: Boolean = false,
+    val preferences: AppPreferences = AppPreferences(),
+    val profiles: List<SmartProfile> = emptyList(),
+    val routines: List<SmartRoutine> = emptyList(),
+    val contacts: List<PriorityContact> = emptyList(),
+    val activityEvents: List<ActivityEvent> = emptyList(),
+    val focusSessions: List<FocusSessionRecord> = emptyList(),
+    val notificationStats: List<NotificationStat> = emptyList(),
+    val activeFocus: ActiveFocusSession = ActiveFocusSession(),
+    val lastCompletedFocusSummary: String? = null,
+    val latestSimulationTrace: SimulationTrace? = null,
+    val lastInterruptionDecision: InterruptionDecision? = null,
+    val pendingConflict: PendingConflictPrompt? = null,
+    val assistantMessages: List<AssistantMessage> = emptyList(),
+    val isAssistantThinking: Boolean = false,
+    val routineDraftFromAssistant: SmartRoutine? = null,
+    val demoScenarioResult: DemoScenarioStepResult? = null,
+    val feedbackBanner: String? = null
+) {
+    val activeProfile: SmartProfile?
+        get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
+}
+
+class SmartCompanionViewModel(
+    private val repository: SmartCompanionRepository,
+    private val simulationEngine: AutomationSimulationEngine = AutomationSimulationEngine(),
+    private val deviceActionExecutor: DeviceActionExecutor = SimulatedDeviceActionExecutor(),
+    private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine()
+) : ViewModel() {
+
+    private val _activeFocus = MutableStateFlow(ActiveFocusSession())
+    private val _lastCompletedFocusSummary = MutableStateFlow<String?>(null)
+    private val _latestTrace = MutableStateFlow<SimulationTrace?>(null)
+    private val _lastInterruption = MutableStateFlow<InterruptionDecision?>(null)
+    private val _pendingConflict = MutableStateFlow<PendingConflictPrompt?>(null)
+    private val _assistantMessages = MutableStateFlow(initialAssistantMessages(AppLanguage.ENGLISH))
+    private val _isAssistantThinking = MutableStateFlow(false)
+    private val _routineDraftFromAssistant = MutableStateFlow<SmartRoutine?>(null)
+    private val _demoScenarioResult = MutableStateFlow<DemoScenarioStepResult?>(null)
+    private val _feedbackBanner = MutableStateFlow<String?>(null)
+    private val _isReady = MutableStateFlow(false)
+
+    private var focusTimerJob: Job? = null
+
+    private val coreDataFlow = combine(
+        repository.preferences,
+        repository.profiles,
+        repository.routines,
+        repository.contacts,
+        repository.activityEvents
+    ) { prefs, profiles, routines, contacts, events ->
+        CoreBundle(prefs, profiles, routines, contacts, events)
+    }
+
+    private val secondaryDataFlow = combine(
+        repository.focusSessions,
+        repository.notificationStats,
+        _activeFocus,
+        _latestTrace,
+        _lastInterruption
+    ) { focus, stats, activeFocus, trace, interruption ->
+        SecondaryBundle(focus, stats, activeFocus, trace, interruption)
+    }
+
+    private val interactiveDataFlow = combine(
+        _pendingConflict,
+        _assistantMessages,
+        _isAssistantThinking,
+        _feedbackBanner,
+        _isReady
+    ) { conflict, messages, thinking, banner, ready ->
+        InteractiveBundle(conflict, messages, thinking, banner, ready)
+    }
+
+    val uiState: StateFlow<SmartCompanionUiState> = combine(
+        coreDataFlow,
+        secondaryDataFlow,
+        interactiveDataFlow,
+        _lastCompletedFocusSummary,
+        _demoScenarioResult,
+        _routineDraftFromAssistant
+    ) { args ->
+        val core = args[0] as CoreBundle
+        val sec = args[1] as SecondaryBundle
+        val inter = args[2] as InteractiveBundle
+        val focusSummary = args[3] as String?
+        val scenarioResult = args[4] as DemoScenarioStepResult?
+        val draftRoutine = args[5] as SmartRoutine?
+
+        SmartCompanionUiState(
+            isReady = inter.isReady,
+            preferences = core.prefs,
+            profiles = core.profiles,
+            routines = core.routines,
+            contacts = core.contacts,
+            activityEvents = core.events,
+            focusSessions = sec.focusSessions,
+            notificationStats = sec.notificationStats,
+            activeFocus = sec.activeFocus,
+            lastCompletedFocusSummary = focusSummary,
+            latestSimulationTrace = sec.trace,
+            lastInterruptionDecision = sec.interruption,
+            pendingConflict = inter.pendingConflict,
+            assistantMessages = inter.assistantMessages,
+            isAssistantThinking = inter.isAssistantThinking,
+            routineDraftFromAssistant = draftRoutine,
+            demoScenarioResult = scenarioResult,
+            feedbackBanner = inter.feedbackBanner
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = SmartCompanionUiState()
+    )
+
+    init {
+        viewModelScope.launch {
+            repository.ensureSeeded()
+            _isReady.value = true
+        }
+    }
+
+    private fun isArabic(): Boolean = uiState.value.preferences.language == AppLanguage.ARABIC
+
+    fun clearFeedbackBanner() {
+        _feedbackBanner.value = null
+    }
+
+    private fun showBanner(msg: String) {
+        _feedbackBanner.value = msg
+    }
+
+    fun completeOnboarding() {
+        viewModelScope.launch {
+            repository.setOnboardingCompleted(true)
+            repository.logEvent(
+                title = "Entered Demo Mode",
+                category = EventCategory.SYSTEM,
+                triggerSource = "Onboarding",
+                result = "Demo workspace ready",
+                explanation = "User completed onboarding and entered Smart Companion Demo Mode."
+            )
+        }
+    }
+
+    fun reopenOnboarding() {
+        viewModelScope.launch {
+            repository.setOnboardingCompleted(false)
+        }
+    }
+
+    fun activateProfile(profile: SmartProfile, triggerSource: String = "User Dashboard") {
+        viewModelScope.launch {
+            val current = uiState.value
+            if (current.preferences.activeProfileId == profile.id &&
+                current.preferences.simulatedSoundMode == profile.soundMode
+            ) {
+                showBanner(
+                    if (isArabic()) "${profile.name} نشط بالفعل"
+                    else "${profile.name} Profile is already active"
+                )
+                return@launch
+            }
+            val execResult = deviceActionExecutor.execute(
+                DeviceActionCommand.ActivateProfileState(profile.id, profile.name, profile.soundMode)
+            )
+            repository.savePhoneState(
+                activeProfileId = profile.id,
+                soundMode = profile.soundMode,
+                isAutomationPaused = current.preferences.isAutomationPaused
+            )
+            repository.logEvent(
+                title = "${profile.name} Profile Activated",
+                category = EventCategory.PROFILE,
+                triggerSource = triggerSource,
+                result = execResult.summary,
+                explanation = "${profile.name} profile enabled (${profile.priorityContactBehavior}).",
+                relatedProfileName = profile.name
+            )
+            showBanner(
+                if (isArabic()) "تم تفعيل وضع ${profile.name} (${profile.soundMode.arabicName})"
+                else "${profile.name} Profile activated (${profile.soundMode.displayName})"
+            )
+        }
+    }
+
+    fun setSimulatedSoundMode(mode: SoundMode, triggerSource: String = "Manual Override") {
+        viewModelScope.launch {
+            val current = uiState.value
+            val execResult = deviceActionExecutor.execute(
+                DeviceActionCommand.ApplySoundMode(mode, triggerSource)
+            )
+            repository.savePhoneState(
+                activeProfileId = current.preferences.activeProfileId,
+                soundMode = mode,
+                isAutomationPaused = current.preferences.isAutomationPaused
+            )
+            repository.logEvent(
+                title = "Simulated Sound Mode -> ${mode.displayName}",
+                category = EventCategory.SOUND_MODE,
+                triggerSource = triggerSource,
+                result = execResult.summary,
+                explanation = "User changed simulated sound state without modifying real device audio.",
+                relatedProfileName = current.activeProfile?.name
+            )
+            showBanner(
+                if (isArabic()) "تم ضبط الصوت المحاكى على: ${mode.arabicName}"
+                else "Simulated phone sound set to ${mode.displayName}"
+            )
+        }
+    }
+
+    fun toggleGlobalAutomationPause() {
+        viewModelScope.launch {
+            val current = uiState.value
+            val newPaused = !current.preferences.isAutomationPaused
+            repository.savePhoneState(
+                activeProfileId = current.preferences.activeProfileId,
+                soundMode = current.preferences.simulatedSoundMode,
+                isAutomationPaused = newPaused
+            )
+            repository.logEvent(
+                title = if (newPaused) "Global Automation Paused" else "Automation Resumed",
+                category = EventCategory.AUTOMATION,
+                triggerSource = "Safety Control",
+                result = if (newPaused) "All automatic triggers paused" else "Scheduled & context triggers active",
+                explanation = if (newPaused) {
+                    "Safety pause suspended automatic routine triggers while preserving existing rules."
+                } else {
+                    "Smart Companion automation resumed normal evaluation."
+                },
+                relatedProfileName = current.activeProfile?.name
+            )
+            showBanner(
+                if (isArabic()) {
+                    if (newPaused) "تم إيقاف جميع الأتمتة مؤقتاً" else "تم استئناف الأتمتة"
+                } else {
+                    if (newPaused) "All automations paused" else "Automations resumed"
+                }
+            )
+        }
+    }
+
+    fun restorePreviousPhoneState() {
+        viewModelScope.launch {
+            val prev = uiState.value.preferences.previousSnapshot
+            val prevProfileName = uiState.value.profiles.firstOrNull { it.id == prev.activeProfileId }?.name ?: "Personal"
+            deviceActionExecutor.execute(
+                DeviceActionCommand.ActivateProfileState(prev.activeProfileId, prevProfileName, prev.soundMode)
+            )
+            repository.savePhoneState(
+                activeProfileId = prev.activeProfileId,
+                soundMode = prev.soundMode,
+                isAutomationPaused = prev.isAutomationPaused,
+                recordPreviousSnapshot = false
+            )
+            repository.logEvent(
+                title = "Previous Simulated State Restored",
+                category = EventCategory.SYSTEM,
+                triggerSource = "Safety Recovery",
+                result = "$prevProfileName • ${prev.soundMode.displayName}",
+                explanation = "Safety Center rolled back simulated phone profile and sound state to the previous snapshot.",
+                relatedProfileName = prevProfileName
+            )
+            showBanner(
+                if (isArabic()) "تمت استعادة الحالة السابقة: $prevProfileName"
+                else "Restored previous state: $prevProfileName (${prev.soundMode.displayName})"
+            )
+        }
+    }
+
+    // --- Profile CRUD ---
+    fun saveProfile(profile: SmartProfile) {
+        viewModelScope.launch {
+            repository.upsertProfile(profile)
+            repository.logEvent(
+                title = "Saved Profile: ${profile.name}",
+                category = EventCategory.PROFILE,
+                triggerSource = "Smart Profiles",
+                result = "Sound=${profile.soundMode.displayName}",
+                explanation = "Updated profile configuration and interruption rules.",
+                relatedProfileName = profile.name
+            )
+            showBanner(if (isArabic()) "تم حفظ الوضع '${profile.name}'" else "Saved profile '${profile.name}'")
+        }
+    }
+
+    fun duplicateProfile(profile: SmartProfile) {
+        viewModelScope.launch {
+            val copy = profile.copy(
+                id = "profile_custom_${UUID.randomUUID().toString().take(6)}",
+                name = if (isArabic()) "${profile.name} (نسخة)" else "${profile.name} Copy",
+                isDefault = false,
+                isProtected = false
+            )
+            repository.upsertProfile(copy)
+            repository.logEvent(
+                title = "Duplicated Profile: ${copy.name}",
+                category = EventCategory.PROFILE,
+                triggerSource = "Smart Profiles",
+                result = "Created customizable copy",
+                explanation = "Duplicated ${profile.name} so user can customize rules safely.",
+                relatedProfileName = copy.name
+            )
+            showBanner(if (isArabic()) "تم تكرار '${profile.name}'" else "Duplicated '${profile.name}'")
+        }
+    }
+
+    fun deleteProfile(profile: SmartProfile) {
+        viewModelScope.launch {
+            if (profile.isProtected) {
+                showBanner(
+                    if (isArabic()) "لا يمكن حذف الأوضاع الافتراضية المحمية. يمكنك تعديلها أو تكرارها."
+                    else "Default protected profiles cannot be deleted. You can edit or duplicate them."
+                )
+                return@launch
+            }
+            if (uiState.value.preferences.activeProfileId == profile.id) {
+                val fallback = uiState.value.profiles.firstOrNull { it.id == "profile_personal" }
+                if (fallback != null) {
+                    repository.savePhoneState(
+                        fallback.id,
+                        fallback.soundMode,
+                        uiState.value.preferences.isAutomationPaused
+                    )
+                }
+            }
+            repository.deleteProfile(profile.id)
+            repository.logEvent(
+                title = "Deleted Custom Profile: ${profile.name}",
+                category = EventCategory.PROFILE,
+                triggerSource = "Smart Profiles",
+                result = "Removed custom profile",
+                explanation = "Custom profile deleted after user confirmation."
+            )
+            showBanner(if (isArabic()) "تم حذف الوضع '${profile.name}'" else "Deleted profile '${profile.name}'")
+        }
+    }
+
+    fun restoreDefaultProfiles() {
+        viewModelScope.launch {
+            repository.restoreDefaultProfiles()
+            repository.logEvent(
+                title = "Default Profiles Restored",
+                category = EventCategory.SYSTEM,
+                triggerSource = "Safety & Recovery",
+                result = "5 core profiles restored",
+                explanation = "Restored Study, Work, Sleep, Personal, and Custom Focus defaults."
+            )
+            showBanner(if (isArabic()) "تمت استعادة الأوضاع الافتراضية" else "Default profiles restored")
+        }
+    }
+
+    // --- Routine CRUD & Simulation Engine ---
+    fun saveRoutine(routine: SmartRoutine) {
+        viewModelScope.launch {
+            repository.upsertRoutine(routine)
+            _routineDraftFromAssistant.value = null
+            repository.logEvent(
+                title = "Saved Routine: ${routine.name}",
+                category = EventCategory.ROUTINE,
+                triggerSource = "Visual Rule Builder",
+                result = routine.trigger.summary,
+                explanation = "Rule saved with ${routine.actions.size} actions and ${routine.exceptions.size} exceptions.",
+                relatedRoutineName = routine.name
+            )
+            showBanner(if (isArabic()) "تم حفظ الروتين '${routine.name}'" else "Saved routine '${routine.name}'")
+        }
+    }
+
+    fun toggleRoutineEnabled(routine: SmartRoutine) {
+        viewModelScope.launch {
+            val updated = routine.copy(isEnabled = !routine.isEnabled)
+            repository.upsertRoutine(updated)
+            repository.logEvent(
+                title = "${updated.name} ${if (updated.isEnabled) "Enabled" else "Disabled"}",
+                category = EventCategory.ROUTINE,
+                triggerSource = "Smart Routines",
+                result = if (updated.isEnabled) "Active in automation engine" else "Excluded from automation",
+                explanation = "Routine toggle updated by user.",
+                relatedRoutineName = updated.name
+            )
+            showBanner(
+                if (isArabic()) {
+                    "${updated.name}: ${if (updated.isEnabled) "مفعّل" else "معطّل"}"
+                } else {
+                    "${updated.name} ${if (updated.isEnabled) "enabled" else "disabled"}"
+                }
+            )
+        }
+    }
+
+    fun duplicateRoutine(routine: SmartRoutine) {
+        viewModelScope.launch {
+            val copy = routine.copy(
+                id = "routine_${UUID.randomUUID().toString().take(6)}",
+                name = if (isArabic()) "${routine.name} (نسخة)" else "${routine.name} (Copy)",
+                executionCount = 0,
+                skippedCount = 0,
+                lastExecutionResult = if (isArabic()) "منسوخ — جاهز للتشغيل" else "Duplicated — ready to run",
+                lastExecutedAtMillis = null
+            )
+            repository.upsertRoutine(copy)
+            repository.logEvent(
+                title = "Duplicated Routine: ${copy.name}",
+                category = EventCategory.ROUTINE,
+                triggerSource = "Smart Routines",
+                result = "New routine copy created",
+                explanation = "Cloned configuration from ${routine.name}.",
+                relatedRoutineName = copy.name
+            )
+            showBanner(if (isArabic()) "تم تكرار '${routine.name}'" else "Duplicated '${routine.name}'")
+        }
+    }
+
+    fun deleteRoutine(routine: SmartRoutine) {
+        viewModelScope.launch {
+            repository.deleteRoutine(routine.id)
+            repository.logEvent(
+                title = "Deleted Routine: ${routine.name}",
+                category = EventCategory.ROUTINE,
+                triggerSource = "Smart Routines",
+                result = "Routine removed",
+                explanation = "Confirmed deletion of ${routine.name}.",
+                relatedRoutineName = routine.name
+            )
+            showBanner(if (isArabic()) "تم حذف الروتين '${routine.name}'" else "Deleted routine '${routine.name}'")
+        }
+    }
+
+    fun resetDemoRoutines() {
+        viewModelScope.launch {
+            repository.resetDemoRoutines()
+            repository.logEvent(
+                title = "Demo Routines Reset",
+                category = EventCategory.SYSTEM,
+                triggerSource = "Safety & Recovery",
+                result = "Initial demonstration routines restored",
+                explanation = "Restored Study Time, Sleep Schedule, Work Hours, Personal Time, and Conflict Demo."
+            )
+            showBanner(if (isArabic()) "تمت استعادة روتينات العرض" else "Demo routines restored")
+        }
+    }
+
+    fun runRoutineManually(routine: SmartRoutine) {
+        runSimulationEvent(SimulationEvent.ManualRoutine(routine.id))
+    }
+
+    fun runSimulationEvent(event: SimulationEvent) {
+        viewModelScope.launch {
+            val state = uiState.value
+            val output = simulationEngine.evaluate(
+                event = event,
+                routines = state.routines,
+                profiles = state.profiles,
+                context = state.preferences.simulatedContext,
+                isAutomationPaused = state.preferences.isAutomationPaused,
+                activeProfileId = state.preferences.activeProfileId,
+                isFocusActive = state.activeFocus.isActive,
+                conflictPolicy = state.preferences.conflictPolicy
+            )
+            _latestTrace.value = output.trace
+
+            if (output.trace.requiresUserConfirmation) {
+                val conflictingRoutines = state.routines.filter { it.id in output.trace.conflictingRoutineIds }
+                _pendingConflict.value = PendingConflictPrompt(
+                    trace = output.trace,
+                    candidateRoutines = conflictingRoutines,
+                    triggerLabel = output.trace.triggerReceived
+                )
+                repository.logEvent(
+                    title = "Rule Conflict Detected",
+                    category = EventCategory.CONFLICT,
+                    triggerSource = output.trace.triggerReceived,
+                    result = "Awaiting confirmation",
+                    explanation = output.trace.conflictExplanation ?: "Multiple matching routines have conflicting actions."
+                )
+                showBanner(
+                    if (isArabic()) "تم اكتشاف تعارض! اختر الروتين المراد تنفيذه."
+                    else "Conflict detected! Choose which routine to execute."
+                )
+                return@launch
+            }
+
+            applyEngineOutput(output)
+        }
+    }
+
+    fun resolvePendingConflict(chosenRoutine: SmartRoutine?) {
+        viewModelScope.launch {
+            val pending = _pendingConflict.value ?: return@launch
+            _pendingConflict.value = null
+
+            if (chosenRoutine == null) {
+                repository.logEvent(
+                    title = "Conflict Resolution Cancelled",
+                    category = EventCategory.CONFLICT,
+                    triggerSource = pending.triggerLabel,
+                    result = "Current phone state preserved",
+                    explanation = "User chose to keep current state without running conflicting routines."
+                )
+                showBanner(if (isArabic()) "تم الإبقاء على الحالة الحالية" else "Kept current state")
+                return@launch
+            }
+
+            pending.candidateRoutines.filter { it.id != chosenRoutine.id }.forEach { skipped ->
+                repository.upsertRoutine(
+                    skipped.copy(
+                        skippedCount = skipped.skippedCount + 1,
+                        lastExecutionResult = "Skipped after user selected '${chosenRoutine.name}'",
+                        lastExecutedAtMillis = System.currentTimeMillis()
+                    )
+                )
+            }
+
+            val output = simulationEngine.executeConfirmedRoutine(
+                winner = chosenRoutine,
+                conflictingNames = pending.candidateRoutines.map { it.name },
+                triggerLabel = pending.triggerLabel,
+                conflictExplanation = pending.trace.conflictExplanation
+            )
+            _latestTrace.value = output.trace
+            applyEngineOutput(output)
+        }
+    }
+
+    private suspend fun applyEngineOutput(output: EngineEvaluationOutput) {
+        val state = uiState.value
+        val routine = output.selectedRoutine
+
+        if (routine == null) {
+            repository.logEvent(
+                title = "Simulation Evaluated",
+                category = EventCategory.AUTOMATION,
+                triggerSource = output.trace.triggerReceived,
+                result = output.trace.finalResult,
+                explanation = output.trace.conditionsEvaluated.joinToString("; ").ifEmpty { output.trace.finalResult }
+            )
+            showBanner(output.trace.finalResult)
+            return
+        }
+
+        val targetProfileId = output.targetProfileId ?: state.preferences.activeProfileId
+        val targetProfile = state.profiles.firstOrNull { it.id == targetProfileId }
+        val newSoundMode = output.targetSoundMode ?: targetProfile?.soundMode ?: state.preferences.simulatedSoundMode
+        val newPaused = output.setAutomationPaused ?: state.preferences.isAutomationPaused
+
+        // Route simulated execution through the DeviceActionExecutor abstraction
+        deviceActionExecutor.execute(
+            DeviceActionCommand.ActivateProfileState(
+                profileId = targetProfileId,
+                profileName = targetProfile?.name ?: "Profile",
+                soundMode = newSoundMode
+            )
+        )
+        if (output.inAppNotice != null) {
+            deviceActionExecutor.execute(
+                DeviceActionCommand.DeliverInAppNotice(routine.name, output.inAppNotice)
+            )
+        }
+
+        repository.savePhoneState(
+            activeProfileId = targetProfileId,
+            soundMode = newSoundMode,
+            isAutomationPaused = newPaused
+        )
+
+        val updatedRoutine = routine.copy(
+            executionCount = routine.executionCount + 1,
+            lastExecutionResult = output.trace.finalResult,
+            lastExecutedAtMillis = System.currentTimeMillis()
+        )
+        repository.upsertRoutine(updatedRoutine)
+
+        if (output.startFocusMinutes != null) {
+            startFocusSessionInternal(
+                minutes = output.startFocusMinutes,
+                profile = targetProfile ?: state.activeProfile,
+                triggerSource = "Routine: ${routine.name}"
+            )
+        } else if (output.endFocusSession && state.activeFocus.isActive) {
+            endFocusSession(completedNaturally = false)
+        }
+
+        repository.logEvent(
+            title = "Routine Executed: ${routine.name}",
+            category = if (output.trace.conflictDetected) EventCategory.CONFLICT else EventCategory.ROUTINE,
+            triggerSource = output.trace.triggerReceived,
+            result = "${targetProfile?.name ?: "Profile"} • ${newSoundMode.displayName}",
+            explanation = output.trace.finalResult,
+            relatedRoutineName = routine.name,
+            relatedProfileName = targetProfile?.name
+        )
+
+        showBanner(output.inAppNotice ?: "${routine.name} -> ${targetProfile?.name ?: ""} (${newSoundMode.displayName})")
+    }
+
+    // --- Context Awareness ---
+    fun updateSimulatedContext(
+        hour: Int? = null,
+        minute: Int? = null,
+        day: DayFilter? = null,
+        location: SimulatedLocation? = null,
+        customLocationName: String? = null,
+        activity: SimulatedActivity? = null,
+        customActivityName: String? = null,
+        repeatCallerDetected: Boolean? = null,
+        evaluateEngine: Boolean = false
+    ) {
+        viewModelScope.launch {
+            val prev = uiState.value.preferences.simulatedContext
+            val next = prev.copy(
+                simulatedHour = hour ?: prev.simulatedHour,
+                simulatedMinute = minute ?: prev.simulatedMinute,
+                simulatedDay = day ?: prev.simulatedDay,
+                location = location ?: prev.location,
+                customLocationName = customLocationName ?: prev.customLocationName,
+                activity = activity ?: prev.activity,
+                customActivityName = customActivityName ?: prev.customActivityName,
+                repeatCallerDetected = repeatCallerDetected ?: prev.repeatCallerDetected
+            )
+            repository.setSimulatedContext(next)
+            repository.logEvent(
+                title = "Simulated Context Updated",
+                category = EventCategory.CONTEXT,
+                triggerSource = "Context Awareness",
+                result = "${next.location.displayName} • ${next.activity.displayName} • ${TimeUtils.formatTime12h(next.simulatedHour, next.simulatedMinute)}",
+                explanation = "Updated simulated environment context for automation testing."
+            )
+
+            if (evaluateEngine) {
+                when {
+                    location != null && location != prev.location -> {
+                        val locName = if (location == SimulatedLocation.CUSTOM) next.customLocationName else location.displayName
+                        runSimulationEvent(SimulationEvent.LocationEntered(locName))
+                    }
+                    activity != null && activity != prev.activity -> {
+                        val actName = if (activity == SimulatedActivity.CUSTOM) next.customActivityName else activity.displayName
+                        runSimulationEvent(SimulationEvent.ActivityStarted(actName))
+                    }
+                    else -> {
+                        runSimulationEvent(SimulationEvent.TimeAndDay(next.simulatedHour, next.simulatedMinute, next.simulatedDay))
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Priority Contacts & Interruption Simulator ---
+    fun saveContact(contact: PriorityContact) {
+        viewModelScope.launch {
+            repository.upsertContact(contact)
+            repository.logEvent(
+                title = "Updated Contact: ${contact.name}",
+                category = EventCategory.CONTACT_EXCEPTION,
+                triggerSource = "Priority Contacts",
+                result = "${contact.priorityLevel.displayName} (${if (contact.isEnabled) "Enabled" else "Paused"})",
+                explanation = "Configured simulated exception behavior for ${contact.name}."
+            )
+            showBanner(if (isArabic()) "تم حفظ جهة الاتصال '${contact.name}'" else "Saved contact '${contact.name}'")
+        }
+    }
+
+    fun deleteContact(contact: PriorityContact) {
+        viewModelScope.launch {
+            repository.deleteContact(contact.id)
+            repository.logEvent(
+                title = "Removed Contact: ${contact.name}",
+                category = EventCategory.CONTACT_EXCEPTION,
+                triggerSource = "Priority Contacts",
+                result = "Contact deleted",
+                explanation = "Removed synthetic contact after user confirmation."
+            )
+            showBanner(if (isArabic()) "تمت إزالة '${contact.name}'" else "Removed '${contact.name}'")
+        }
+    }
+
+    fun simulateIncomingInterruption(
+        contact: PriorityContact,
+        type: InterruptionType,
+        isRepeatCaller: Boolean
+    ): InterruptionDecision {
+        val activeProfile = uiState.value.activeProfile ?: SmartProfile(
+            id = "profile_personal",
+            name = "Personal",
+            description = "",
+            iconKey = com.example.models.ProfileIconKey.PERSONAL,
+            accentColorHex = 0xFF0D7C7B,
+            soundMode = SoundMode.SOUND,
+            allowedCategories = emptyList(),
+            priorityContactBehavior = "",
+            allowEmergencyContacts = true,
+            allowHighPriorityContacts = true,
+            defaultFocusMinutes = 25,
+            isDefault = true,
+            isProtected = true
+        )
+        val decision = simulationEngine.simulateIncomingInterruption(
+            contact = contact,
+            interruptionType = type,
+            isRepeatCaller = isRepeatCaller,
+            activeProfile = activeProfile
+        )
+        _lastInterruption.value = decision
+
+        if (!decision.isAllowed && _activeFocus.value.isActive) {
+            _activeFocus.update {
+                it.copy(simulatedInterruptionsBlocked = it.simulatedInterruptionsBlocked + 1)
+            }
+        }
+
+        viewModelScope.launch {
+            repository.logEvent(
+                title = if (decision.isAllowed) {
+                    "Interruption Allowed: ${contact.name}"
+                } else {
+                    "Interruption Blocked: ${contact.name}"
+                },
+                category = EventCategory.CONTACT_EXCEPTION,
+                triggerSource = "Simulated Incoming ${type.displayName}",
+                result = if (decision.isAllowed) "Allowed (${decision.priorityLevel.displayName})" else "Blocked by ${activeProfile.name}",
+                explanation = decision.explanation,
+                relatedProfileName = activeProfile.name
+            )
+        }
+        return decision
+    }
+
+    // --- Focus Session Timer ---
+    fun startFocusSession(minutes: Int, profile: SmartProfile, activateProfileNow: Boolean = true) {
+        viewModelScope.launch {
+            if (activateProfileNow) {
+                deviceActionExecutor.execute(
+                    DeviceActionCommand.ActivateProfileState(profile.id, profile.name, profile.soundMode)
+                )
+                repository.savePhoneState(
+                    activeProfileId = profile.id,
+                    soundMode = profile.soundMode,
+                    isAutomationPaused = uiState.value.preferences.isAutomationPaused
+                )
+            }
+            startFocusSessionInternal(minutes, profile, "Focus Session Control")
+            showBanner(
+                if (isArabic()) "بدأت جلسة التركيز: ${minutes} د (${profile.name})"
+                else "Focus session started: ${minutes}m (${profile.name})"
+            )
+        }
+    }
+
+    private suspend fun startFocusSessionInternal(
+        minutes: Int,
+        profile: SmartProfile?,
+        triggerSource: String
+    ) {
+        val safeProfile = profile ?: return
+        val totalSecs = (minutes.coerceIn(1, 240)) * 60
+        focusTimerJob?.cancel()
+        _lastCompletedFocusSummary.value = null
+        _activeFocus.value = ActiveFocusSession(
+            isActive = true,
+            isPaused = false,
+            profileId = safeProfile.id,
+            profileName = safeProfile.name,
+            totalSeconds = totalSecs,
+            remainingSeconds = totalSecs,
+            simulatedInterruptionsBlocked = 0,
+            startedAtMillis = System.currentTimeMillis()
+        )
+        repository.logEvent(
+            title = "Focus Session Started (${minutes}m)",
+            category = EventCategory.FOCUS,
+            triggerSource = triggerSource,
+            result = "${safeProfile.name} • ${safeProfile.soundMode.displayName}",
+            explanation = "Countdown started for $minutes minutes under ${safeProfile.name} profile.",
+            relatedProfileName = safeProfile.name
+        )
+        startTimerTicker()
+    }
+
+    private fun startTimerTicker() {
+        focusTimerJob?.cancel()
+        focusTimerJob = viewModelScope.launch {
+            while (_activeFocus.value.isActive) {
+                delay(1000L)
+                val cur = _activeFocus.value
+                if (!cur.isActive || cur.isPaused) continue
+                if (cur.remainingSeconds <= 1) {
+                    endFocusSession(completedNaturally = true)
+                    break
+                } else {
+                    _activeFocus.value = cur.copy(remainingSeconds = cur.remainingSeconds - 1)
+                }
+            }
+        }
+    }
+
+    fun pauseOrResumeFocusSession() {
+        val cur = _activeFocus.value
+        if (!cur.isActive) return
+        val nextPaused = !cur.isPaused
+        _activeFocus.value = cur.copy(isPaused = nextPaused)
+        viewModelScope.launch {
+            repository.logEvent(
+                title = if (nextPaused) "Focus Session Paused" else "Focus Session Resumed",
+                category = EventCategory.FOCUS,
+                triggerSource = "Focus Timer",
+                result = "${TimeUtils.formatTimer(cur.remainingSeconds)} remaining",
+                explanation = if (nextPaused) "User paused active focus timer." else "User resumed active focus timer.",
+                relatedProfileName = cur.profileName
+            )
+        }
+    }
+
+    fun simulateBlockedInterruptionDuringFocus() {
+        val cur = _activeFocus.value
+        if (!cur.isActive) return
+        _activeFocus.value = cur.copy(simulatedInterruptionsBlocked = cur.simulatedInterruptionsBlocked + 1)
+        showBanner(
+            if (isArabic()) "تم كتم إشعار محاكى غير مهم أثناء التركيز"
+            else "Simulated non-priority notification muted during focus"
+        )
+    }
+
+    fun endFocusSession(completedNaturally: Boolean = false) {
+        focusTimerJob?.cancel()
+        val cur = _activeFocus.value
+        if (!cur.isActive) return
+
+        val elapsedSecs = (cur.totalSeconds - cur.remainingSeconds).coerceAtLeast(60)
+        val plannedMins = (cur.totalSeconds / 60).coerceAtLeast(1)
+        val completedMins = if (completedNaturally) plannedMins else (elapsedSecs / 60).coerceAtLeast(1)
+        val status = if (completedNaturally) "Completed" else "Ended Early"
+
+        _activeFocus.value = ActiveFocusSession()
+        val summary = if (isArabic()) {
+            "تم إنهاء الجلسة: ${completedMins} د في وضع ${cur.profileName} • تم حجب ${cur.simulatedInterruptionsBlocked} مقاطعة محاكاة."
+        } else {
+            "$status: ${completedMins}m in ${cur.profileName} Profile • ${cur.simulatedInterruptionsBlocked} simulated distractions blocked."
+        }
+        _lastCompletedFocusSummary.value = summary
+
+        viewModelScope.launch {
+            repository.addFocusSession(
+                FocusSessionRecord(
+                    id = "fs_${UUID.randomUUID().toString().take(8)}",
+                    profileId = cur.profileId,
+                    profileName = cur.profileName,
+                    plannedMinutes = plannedMins,
+                    completedMinutes = completedMins,
+                    startedAtMillis = cur.startedAtMillis,
+                    endedAtMillis = System.currentTimeMillis(),
+                    simulatedInterruptionsBlocked = cur.simulatedInterruptionsBlocked,
+                    status = status
+                )
+            )
+            repository.logEvent(
+                title = "Focus Session $status (${completedMins}m)",
+                category = EventCategory.FOCUS,
+                triggerSource = "Focus Timer",
+                result = "${cur.simulatedInterruptionsBlocked} simulated interruptions blocked",
+                explanation = summary,
+                relatedProfileName = cur.profileName
+            )
+            showBanner(summary)
+        }
+    }
+
+    // --- AI Assistant ---
+    fun sendAssistantPrompt(prompt: String) {
+        val trimmed = prompt.trim()
+        if (trimmed.isEmpty()) return
+
+        val userMsg = AssistantMessage(
+            id = UUID.randomUUID().toString(),
+            isUser = true,
+            text = trimmed,
+            timestampMillis = System.currentTimeMillis()
+        )
+        _assistantMessages.update { it + userMsg }
+        _isAssistantThinking.value = true
+
+        viewModelScope.launch {
+            delay(360L)
+            val state = uiState.value
+            val snapshot = AssistantStateSnapshot(
+                language = state.preferences.language,
+                activeProfile = state.activeProfile ?: state.profiles.first(),
+                soundMode = state.preferences.simulatedSoundMode,
+                isAutomationPaused = state.preferences.isAutomationPaused,
+                routines = state.routines,
+                contacts = state.contacts,
+                notificationStats = state.notificationStats,
+                focusSessions = state.focusSessions,
+                recentEvents = state.activityEvents
+            )
+            val reply = assistantEngine.processPrompt(trimmed, snapshot)
+
+            if (reply.focusMinutesToStart != null) {
+                val studyProfile = state.profiles.firstOrNull { it.id == "profile_study" } ?: state.activeProfile
+                if (studyProfile != null) {
+                    deviceActionExecutor.execute(
+                        DeviceActionCommand.ActivateProfileState(studyProfile.id, studyProfile.name, studyProfile.soundMode)
+                    )
+                    repository.savePhoneState(
+                        studyProfile.id,
+                        studyProfile.soundMode,
+                        state.preferences.isAutomationPaused
+                    )
+                    startFocusSessionInternal(
+                        minutes = reply.focusMinutesToStart,
+                        profile = studyProfile,
+                        triggerSource = "AI Assistant"
+                    )
+                }
+            }
+
+            val assistantMsg = AssistantMessage(
+                id = UUID.randomUUID().toString(),
+                isUser = false,
+                text = reply.text,
+                timestampMillis = System.currentTimeMillis(),
+                proposal = reply.proposal
+            )
+            _assistantMessages.update { it + assistantMsg }
+            _isAssistantThinking.value = false
+        }
+    }
+
+    fun confirmAssistantProposal(messageId: String, proposal: RoutineProposal) {
+        viewModelScope.launch {
+            repository.upsertRoutine(proposal.routine)
+            val note = if (isArabic()) {
+                "تم التأكيد وإضافة '${proposal.routine.name}' إلى الروتينات الذكية."
+            } else {
+                "Confirmed & added '${proposal.routine.name}' to Smart Routines."
+            }
+            _assistantMessages.update { list ->
+                list.map { msg ->
+                    if (msg.id == messageId) {
+                        msg.copy(proposalResolved = true, proposalStatusNote = note)
+                    } else msg
+                }
+            }
+            repository.logEvent(
+                title = "Assistant Created Routine: ${proposal.routine.name}",
+                category = EventCategory.ASSISTANT,
+                triggerSource = "AI Assistant Confirmation",
+                result = proposal.triggerSummary,
+                explanation = "Routine confirmed by user from natural-language proposal.",
+                relatedRoutineName = proposal.routine.name
+            )
+            showBanner(
+                if (isArabic()) "تم إنشاء الروتين '${proposal.routine.name}'!"
+                else "Routine '${proposal.routine.name}' created!"
+            )
+        }
+    }
+
+    fun editAssistantProposal(messageId: String, proposal: RoutineProposal) {
+        _routineDraftFromAssistant.value = proposal.routine
+        val note = if (isArabic()) {
+            "تم فتح '${proposal.routine.name}' في منشئ القواعد المرئي للتعديل."
+        } else {
+            "Opened '${proposal.routine.name}' in Visual Rule Builder for customization."
+        }
+        _assistantMessages.update { list ->
+            list.map { msg ->
+                if (msg.id == messageId) {
+                    msg.copy(proposalResolved = true, proposalStatusNote = note)
+                } else msg
+            }
+        }
+    }
+
+    fun cancelAssistantProposal(messageId: String) {
+        val note = if (isArabic()) "تم الإلغاء — لم يتم إنشاء الروتين." else "Cancelled — routine was not created."
+        _assistantMessages.update { list ->
+            list.map { msg ->
+                if (msg.id == messageId) {
+                    msg.copy(proposalResolved = true, proposalStatusNote = note)
+                } else msg
+            }
+        }
+    }
+
+    fun clearAssistantDraft() {
+        _routineDraftFromAssistant.value = null
+    }
+
+    fun clearAssistantConversation() {
+        _assistantMessages.value = initialAssistantMessages(uiState.value.preferences.language)
+        showBanner(if (isArabic()) "تم مسح المحادثة" else "Assistant conversation cleared")
+    }
+
+    // --- Settings, History & Safety Recovery ---
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { repository.setThemeMode(mode) }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        viewModelScope.launch {
+            repository.setLanguage(language)
+            // Keep conversation intact, only update welcome message if user hasn't chatted yet
+            _assistantMessages.update { current ->
+                if (current.size == 1 && current.first().id == "welcome_1") {
+                    initialAssistantMessages(language)
+                } else current
+            }
+        }
+    }
+
+    fun setRequireConfirmation(require: Boolean) {
+        viewModelScope.launch { repository.setRequireConfirmation(require) }
+    }
+
+    fun setDefaultProfileId(profileId: String) {
+        viewModelScope.launch { repository.setDefaultProfileId(profileId) }
+    }
+
+    fun setConflictPolicy(policy: ConflictResolutionPolicy) {
+        viewModelScope.launch { repository.setConflictPolicy(policy) }
+    }
+
+    fun clearActivityHistory() {
+        viewModelScope.launch {
+            repository.clearActivityHistory()
+            repository.logEvent(
+                title = "Activity History Cleared",
+                category = EventCategory.SYSTEM,
+                triggerSource = "Activity History",
+                result = "Fresh timeline started",
+                explanation = "User cleared previous demo logs."
+            )
+            showBanner(if (isArabic()) "تم مسح سجل النشاط" else "Activity history cleared")
+        }
+    }
+
+    fun resetAllDemoData(resetOnboarding: Boolean = false) {
+        viewModelScope.launch {
+            focusTimerJob?.cancel()
+            _activeFocus.value = ActiveFocusSession()
+            _latestTrace.value = null
+            _lastInterruption.value = null
+            _pendingConflict.value = null
+            _demoScenarioResult.value = null
+            _assistantMessages.value = initialAssistantMessages(uiState.value.preferences.language)
+            repository.resetAllDemoData(resetOnboarding = resetOnboarding)
+            showBanner(if (isArabic()) "تمت استعادة جميع بيانات العرض الافتراضية" else "All demo data restored to initial state")
+        }
+    }
+
+    // --- End-to-End Demo Scenarios (Demo Playground) ---
+    fun executeDemoScenario(scenarioNumber: Int) {
+        viewModelScope.launch {
+            val state = uiState.value
+            val studyProfile = state.profiles.firstOrNull { it.id == "profile_study" } ?: return@launch
+            val sleepProfile = state.profiles.firstOrNull { it.id == "profile_sleep" } ?: return@launch
+            val normalContact = state.contacts.firstOrNull { it.priorityLevel == com.example.models.ContactPriority.NORMAL }
+                ?: state.contacts.first()
+            val emergencyContact = state.contacts.firstOrNull { it.priorityLevel == com.example.models.ContactPriority.EMERGENCY }
+                ?: state.contacts.first()
+            val ar = isArabic()
+
+            when (scenarioNumber) {
+                1 -> {
+                    deviceActionExecutor.execute(
+                        DeviceActionCommand.ActivateProfileState(studyProfile.id, studyProfile.name, SoundMode.SILENT)
+                    )
+                    repository.savePhoneState(studyProfile.id, SoundMode.SILENT, isAutomationPaused = false)
+                    val studyRoutine = state.routines.firstOrNull { it.id == "routine_study_time" }
+                    if (studyRoutine != null) {
+                        repository.upsertRoutine(
+                            studyRoutine.copy(
+                                executionCount = studyRoutine.executionCount + 1,
+                                lastExecutionResult = "Executed in Demo Scenario 1",
+                                lastExecutedAtMillis = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    val normalDecision = simulateIncomingInterruption(normalContact, InterruptionType.CALL, false)
+                    val emergencyDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, false)
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 1: وقت الدراسة" else "Scenario 1: Study Time",
+                        steps = if (ar) listOf(
+                            "1. تفعيل وضع الدراسة (الصوت المحاكى: صامت).",
+                            "2. تشغيل روتين 'وقت الدراسة'.",
+                            "3. مكالمة واردة من ${normalContact.name}: ${if (normalDecision.isAllowed) "مسموح" else "محجوب"}.",
+                            "4. مكالمة طوارئ من ${emergencyContact.name}: ${if (emergencyDecision.isAllowed) "مسموح" else "محجوب"}."
+                        ) else listOf(
+                            "1. Activated Study Profile (Simulated Sound -> Silent).",
+                            "2. Executed 'Study Time' routine.",
+                            "3. Incoming call from ${normalContact.name} (${normalContact.priorityLevel.displayName}): ${if (normalDecision.isAllowed) "ALLOWED" else "BLOCKED"} — ${normalDecision.explanation}",
+                            "4. Incoming call from ${emergencyContact.name} (Emergency): ${if (emergencyDecision.isAllowed) "ALLOWED" else "BLOCKED"} — ${emergencyDecision.explanation}"
+                        ),
+                        finalOutcome = if (ar) "تمت حماية التركيز مع السماح بمكالمات الطوارئ وتسجيل القرارين."
+                        else "Study focus protected while emergency caller bypassed Silent mode. Both decisions logged in Activity History."
+                    )
+                }
+                2 -> {
+                    deviceActionExecutor.execute(
+                        DeviceActionCommand.ActivateProfileState(sleepProfile.id, sleepProfile.name, SoundMode.SILENT)
+                    )
+                    repository.savePhoneState(sleepProfile.id, SoundMode.SILENT, isAutomationPaused = false)
+                    val msgDecision = simulateIncomingInterruption(normalContact, InterruptionType.MESSAGE, false)
+                    val callDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, false)
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 2: حماية النوم" else "Scenario 2: Sleep Protection",
+                        steps = if (ar) listOf(
+                            "1. تفعيل وضع النوم وجدول 11:00 م (صامت).",
+                            "2. رسالة واردة من ${normalContact.name}: ${if (msgDecision.isAllowed) "مسموح" else "محجوب"}.",
+                            "3. مكالمة طوارئ من ${emergencyContact.name}: ${if (callDecision.isAllowed) "مسموح" else "محجوب"}."
+                        ) else listOf(
+                            "1. Activated Sleep Profile & Sleep Schedule (11:00 PM Silent).",
+                            "2. Incoming message from ${normalContact.name}: ${if (msgDecision.isAllowed) "ALLOWED" else "BLOCKED"}.",
+                            "3. Incoming emergency call from ${emergencyContact.name}: ${if (callDecision.isAllowed) "ALLOWED" else "BLOCKED"}."
+                        ),
+                        finalOutcome = if (ar) "تم كتم الرسائل العادية ليلاً مع السماح بوصول العائلة عند الطوارئ."
+                        else "Overnight notifications silenced; emergency family access preserved."
+                    )
+                }
+                3 -> {
+                    val ctx = state.preferences.simulatedContext.copy(
+                        simulatedHour = 9,
+                        simulatedMinute = 0,
+                        simulatedDay = DayFilter.MONDAY
+                    )
+                    repository.setSimulatedContext(ctx)
+                    val output = simulationEngine.evaluate(
+                        event = SimulationEvent.TimeAndDay(9, 0, DayFilter.MONDAY),
+                        routines = state.routines,
+                        profiles = state.profiles,
+                        context = ctx,
+                        isAutomationPaused = false,
+                        activeProfileId = state.preferences.activeProfileId,
+                        isFocusActive = state.activeFocus.isActive,
+                        conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
+                    )
+                    _latestTrace.value = output.trace
+                    applyEngineOutput(output)
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 3: الجدولة الذكية" else "Scenario 3: Smart Scheduling",
+                        steps = if (ar) listOf(
+                            "1. محاكاة الوصول إلى الإثنين 9:00 صباحاً.",
+                            "2. الروتينات المطابقة: ${output.trace.matchingRoutineNames.joinToString()}",
+                            "3. تم تنفيذ: ${output.selectedRoutine?.name ?: "لا شيء"}",
+                            "4. تم تحديث الرئيسية وسجل النشاط."
+                        ) else listOf(
+                            "1. Simulated reaching Monday 9:00 AM.",
+                            "2. Matched routines: ${output.trace.matchingRoutineNames.joinToString()}",
+                            "3. Selected & executed: ${output.selectedRoutine?.name ?: "None"}",
+                            "4. Updated Dashboard & Activity History."
+                        ),
+                        finalOutcome = output.trace.finalResult
+                    )
+                }
+                4 -> {
+                    val prompt = if (ar) {
+                        "اكتم الإشعارات يومياً من 8 مساءً إلى 10 مساءً مع السماح بجهات الطوارئ."
+                    } else {
+                        "Keep my phone silent every day from 8 PM to 10 PM, but allow emergency contacts."
+                    }
+                    val snapshot = AssistantStateSnapshot(
+                        language = state.preferences.language,
+                        activeProfile = state.activeProfile ?: studyProfile,
+                        soundMode = state.preferences.simulatedSoundMode,
+                        isAutomationPaused = state.preferences.isAutomationPaused,
+                        routines = state.routines,
+                        contacts = state.contacts,
+                        notificationStats = state.notificationStats,
+                        focusSessions = state.focusSessions,
+                        recentEvents = state.activityEvents
+                    )
+                    val reply = assistantEngine.processPrompt(prompt, snapshot)
+                    val proposal = reply.proposal
+                    if (proposal != null) {
+                        val demoRoutine = proposal.routine.copy(id = "routine_ai_demo_8pm")
+                        repository.upsertRoutine(demoRoutine)
+                        repository.logEvent(
+                            title = "Demo Scenario 4: AI Created '${demoRoutine.name}'",
+                            category = EventCategory.ASSISTANT,
+                            triggerSource = "Demo Playground (Assistant)",
+                            result = proposal.triggerSummary,
+                            explanation = "Generated and confirmed structured rule from natural language.",
+                            relatedRoutineName = demoRoutine.name
+                        )
+                    }
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 4: إنشاء روتين بالمساعد" else "Scenario 4: AI Routine Creation",
+                        steps = if (ar) listOf(
+                            "1. الطلب: \"$prompt\"",
+                            "2. استخرج المساعد المُشغّل (${proposal?.triggerSummary}) والانتهاء (${proposal?.endTimeLabel}) والاستثناء (${proposal?.exceptionSummary}).",
+                            "3. تم تأكيد الحفظ في قائمة الروتينات الذكية."
+                        ) else listOf(
+                            "1. Prompt: \"$prompt\"",
+                            "2. Assistant parsed Trigger (${proposal?.triggerSummary}), End (${proposal?.endTimeLabel}), Action (${proposal?.actionSummary}), Exception (${proposal?.exceptionSummary}).",
+                            "3. Confirmed creation and persisted routine to Smart Routines."
+                        ),
+                        finalOutcome = if (ar) "تمت إضافة '${proposal?.routine?.name}' إلى الروتينات الذكية."
+                        else "'${proposal?.routine?.name}' is now visible and testable in Smart Routines."
+                    )
+                }
+                5 -> {
+                    val ctx = state.preferences.simulatedContext.copy(
+                        simulatedHour = 18,
+                        simulatedMinute = 0,
+                        simulatedDay = DayFilter.WEDNESDAY
+                    )
+                    repository.setSimulatedContext(ctx)
+                    val output = simulationEngine.evaluate(
+                        event = SimulationEvent.TimeAndDay(18, 0, DayFilter.WEDNESDAY),
+                        routines = state.routines,
+                        profiles = state.profiles,
+                        context = ctx,
+                        isAutomationPaused = false,
+                        activeProfileId = state.preferences.activeProfileId,
+                        isFocusActive = state.activeFocus.isActive,
+                        conflictPolicy = ConflictResolutionPolicy.ASK_USER
+                    )
+                    _latestTrace.value = output.trace
+                    val conflicting = state.routines.filter { it.id in output.trace.conflictingRoutineIds }
+                    if (output.trace.requiresUserConfirmation && conflicting.isNotEmpty()) {
+                        _pendingConflict.value = PendingConflictPrompt(
+                            trace = output.trace,
+                            candidateRoutines = conflicting,
+                            triggerLabel = output.trace.triggerReceived
+                        )
+                    }
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 5: حل تعارض القواعد" else "Scenario 5: Conflict Resolution",
+                        steps = if (ar) listOf(
+                            "1. محاكاة الأربعاء 6:00 مساءً.",
+                            "2. روتينات متقاطعة: ${output.trace.matchingRoutineNames.joinToString()}",
+                            "3. تم فتح نافذة حل التعارض لتختار بأمان."
+                        ) else listOf(
+                            "1. Simulated Wednesday 6:00 PM trigger.",
+                            "2. Detected overlapping routines: ${output.trace.matchingRoutineNames.joinToString()}",
+                            "3. Conflict: ${output.trace.conflictExplanation ?: "Conflicting actions detected"}",
+                            "4. Opened Conflict Resolution dialog so you can choose safely."
+                        ),
+                        finalOutcome = if (ar) "اختر الروتين الفائز من نافذة التأكيد."
+                        else "Conflict surfaced cleanly — pick a winning routine in the dialog."
+                    )
+                }
+                6 -> {
+                    repository.savePhoneState(
+                        activeProfileId = state.preferences.activeProfileId,
+                        soundMode = state.preferences.simulatedSoundMode,
+                        isAutomationPaused = true
+                    )
+                    val pausedEval = simulationEngine.evaluate(
+                        event = SimulationEvent.TimeAndDay(9, 0, DayFilter.MONDAY),
+                        routines = state.routines,
+                        profiles = state.profiles,
+                        context = state.preferences.simulatedContext,
+                        isAutomationPaused = true,
+                        activeProfileId = state.preferences.activeProfileId,
+                        isFocusActive = state.activeFocus.isActive,
+                        conflictPolicy = state.preferences.conflictPolicy
+                    )
+                    repository.savePhoneState(
+                        activeProfileId = state.preferences.activeProfileId,
+                        soundMode = state.preferences.simulatedSoundMode,
+                        isAutomationPaused = false,
+                        recordPreviousSnapshot = false
+                    )
+                    repository.logEvent(
+                        title = "Demo Scenario 6: Global Pause & Recovery Verified",
+                        category = EventCategory.AUTOMATION,
+                        triggerSource = "Demo Playground",
+                        result = "Paused -> Blocked trigger -> Restored",
+                        explanation = "Verified automation stopped under Global Pause and resumed safely."
+                    )
+                    _demoScenarioResult.value = DemoScenarioStepResult(
+                        scenarioTitle = if (ar) "السيناريو 6: الإيقاف الشامل والاستعادة" else "Scenario 6: Global Pause & Recovery",
+                        steps = if (ar) listOf(
+                            "1. تفعيل الإيقاف الشامل للأتمتة.",
+                            "2. اختبار مشغّل الإثنين 9:00 ص -> توقف بأمان.",
+                            "3. استعادة الأتمتة مع الحفاظ على جميع القواعد."
+                        ) else listOf(
+                            "1. Activated Global Automation Pause.",
+                            "2. Tested Monday 9:00 AM trigger -> ${pausedEval.trace.finalResult}",
+                            "3. Restored Automation back to active state with all routines intact."
+                        ),
+                        finalOutcome = if (ar) "أوقف الإيقاف الشامل التنفيذ بأمان وتمت استعادة الإعدادات."
+                        else "Global Pause safely halted execution and restored configuration."
+                    )
+                }
+            }
+        }
+    }
+
+    private fun initialAssistantMessages(language: AppLanguage): List<AssistantMessage> {
+        val welcome = if (language == AppLanguage.ARABIC) {
+            "مرحباً! أنا مساعد المرافق الذكي التجريبي (يعمل محلياً بدون إنترنت). يمكنني مساعدتك في إنشاء روتينات ذكية أو بدء جلسة تركيز أو تفسير حالة هاتفك المحاكاة."
+        } else {
+            "Hello! I am your offline Smart Companion Assistant. I can build routines from plain language, start focus sessions, or explain your current simulated phone behavior using live app state."
+        }
+        return listOf(
+            AssistantMessage(
+                id = "welcome_1",
+                isUser = false,
+                text = welcome,
+                timestampMillis = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private data class CoreBundle(
+        val prefs: AppPreferences,
+        val profiles: List<SmartProfile>,
+        val routines: List<SmartRoutine>,
+        val contacts: List<PriorityContact>,
+        val events: List<ActivityEvent>
+    )
+
+    private data class SecondaryBundle(
+        val focusSessions: List<FocusSessionRecord>,
+        val notificationStats: List<NotificationStat>,
+        val activeFocus: ActiveFocusSession,
+        val trace: SimulationTrace?,
+        val interruption: InterruptionDecision?
+    )
+
+    private data class InteractiveBundle(
+        val pendingConflict: PendingConflictPrompt?,
+        val assistantMessages: List<AssistantMessage>,
+        val isAssistantThinking: Boolean,
+        val feedbackBanner: String?,
+        val isReady: Boolean
+    )
+
+    class Factory(private val repository: SmartCompanionRepository) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return SmartCompanionViewModel(repository) as T
+        }
+    }
+}
