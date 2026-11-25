@@ -266,11 +266,10 @@ class SmartCompanionCoreTest {
             id = "profile_locked_silent",
             name = "Strict Silent",
             soundMode = SoundMode.SILENT,
-            allowEmergencyContacts = false,
             allowHighPriorityContacts = false,
             allowedCategories = emptyList()
         )
-        val allProfiles = profiles.map { it.copy(allowEmergencyContacts = false) } + profiles + lockedSilentProfile
+        val allProfiles = profiles + lockedSilentProfile
 
         for (profile in allProfiles) {
             for (emergency in allTestContacts) {
@@ -282,7 +281,7 @@ class SmartCompanionCoreTest {
                         activeProfile = profile
                     )
                     assertTrue(
-                        "Expected ${emergency.name} ($channel) to pass in ${profile.name} (${profile.soundMode}, allowEmergency=${profile.allowEmergencyContacts})",
+                        "Expected ${emergency.name} ($channel) to pass in ${profile.name} (${profile.soundMode})",
                         decision.isAllowed
                     )
                 }
@@ -331,8 +330,7 @@ class SmartCompanionCoreTest {
             val baseProfile = profiles.firstOrNull { it.id == output.targetProfileId }
                 ?: profiles.first { it.id == "profile_personal" }
             val resultingProfile = baseProfile.copy(
-                soundMode = output.targetSoundMode ?: baseProfile.soundMode,
-                allowEmergencyContacts = false
+                soundMode = output.targetSoundMode ?: baseProfile.soundMode
             )
             for (emergency in emergencyContacts) {
                 for (channel in listOf(InterruptionType.CALL, InterruptionType.MESSAGE)) {
@@ -378,8 +376,7 @@ class SmartCompanionCoreTest {
 
             val resultingProfile = (profiles.firstOrNull { it.id == resolvedOutput.targetProfileId }
                 ?: profiles.first { it.id == "profile_study" }).copy(
-                soundMode = resolvedOutput.targetSoundMode ?: SoundMode.SILENT,
-                allowEmergencyContacts = false
+                soundMode = resolvedOutput.targetSoundMode ?: SoundMode.SILENT
             )
             for (emergency in emergencyContacts) {
                 assertTrue(
@@ -397,7 +394,6 @@ class SmartCompanionCoreTest {
         val emergencyContacts = contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY }
         val customFocusProfile = profiles.first { it.id == "profile_custom" }.copy(
             soundMode = SoundMode.SILENT,
-            allowEmergencyContacts = false,
             allowHighPriorityContacts = false
         )
 
@@ -413,8 +409,7 @@ class SmartCompanionCoreTest {
             conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
         )
         val focusProfile = (profiles.firstOrNull { it.id == focusOutput.targetProfileId } ?: customFocusProfile).copy(
-            soundMode = focusOutput.targetSoundMode ?: SoundMode.SILENT,
-            allowEmergencyContacts = false
+            soundMode = focusOutput.targetSoundMode ?: SoundMode.SILENT
         )
         for (emergency in emergencyContacts) {
             assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, focusProfile).isAllowed)
@@ -433,7 +428,7 @@ class SmartCompanionCoreTest {
             conflictPolicy = ConflictResolutionPolicy.ASK_USER
         )
         assertNull(pausedOutput.selectedRoutine)
-        for (profile in profiles.map { it.copy(allowEmergencyContacts = false) }) {
+        for (profile in profiles) {
             for (emergency in emergencyContacts) {
                 assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, profile).isAllowed)
                 assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, profile).isAllowed)

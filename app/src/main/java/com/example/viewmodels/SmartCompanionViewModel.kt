@@ -751,7 +751,6 @@ class SmartCompanionViewModel(
             soundMode = SoundMode.SOUND,
             allowedCategories = emptyList(),
             priorityContactBehavior = "",
-            allowEmergencyContacts = true,
             allowHighPriorityContacts = true,
             defaultFocusMinutes = 25,
             isDefault = true,

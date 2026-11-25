@@ -9,7 +9,6 @@ data class SmartProfile(
     val soundMode: SoundMode,
     val allowedCategories: List<NotificationCategory>,
     val priorityContactBehavior: String,
-    val allowEmergencyContacts: Boolean,
     val allowHighPriorityContacts: Boolean,
     val defaultFocusMinutes: Int,
     val isDefault: Boolean,

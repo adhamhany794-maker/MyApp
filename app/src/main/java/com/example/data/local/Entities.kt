@@ -13,7 +13,6 @@ data class ProfileEntity(
     val soundMode: String,
     val allowedCategoriesJson: String,
     val priorityContactBehavior: String,
-    val allowEmergencyContacts: Boolean,
     val allowHighPriorityContacts: Boolean,
     val defaultFocusMinutes: Int,
     val isDefault: Boolean,

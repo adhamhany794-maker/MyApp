@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -58,6 +59,7 @@ import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ProfileIconBadge
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.components.SimulatedDemoBadge
+import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
@@ -93,7 +95,6 @@ fun ProfilesScreen(
                         soundMode = SoundMode.VIBRATE,
                         allowedCategories = listOf(NotificationCategory.COMMUNICATION),
                         priorityContactBehavior = "Emergency contacts allowed",
-                        allowEmergencyContacts = true,
                         allowHighPriorityContacts = false,
                         defaultFocusMinutes = 30,
                         isDefault = false,
@@ -399,30 +400,32 @@ private fun ProfileEditorDialog(
                         )
                     }
                 }
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Surface(
+                    color = StatusEmerald.copy(alpha = 0.12f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_emergency_always_note")
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            strings.allowEmergencyContacts,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
+                        Icon(
+                            imageVector = Icons.Rounded.Shield,
+                            contentDescription = null,
+                            tint = StatusEmerald,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Switch(
-                            checked = true,
-                            onCheckedChange = null,
-                            enabled = false,
-                            modifier = Modifier.testTag("profile_emergency_locked_switch")
+                        Text(
+                            text = strings.allowEmergencyAlwaysNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    Text(
-                        text = strings.allowEmergencyAlwaysNote,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.testTag("profile_emergency_locked_note")
-                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -472,7 +475,6 @@ private fun ProfileEditorDialog(
                             name = name.trim(),
                             description = description.trim().ifEmpty { "Custom smart phone profile." },
                             soundMode = soundMode,
-                            allowEmergencyContacts = true,
                             allowHighPriorityContacts = allowHighPriority,
                             priorityContactBehavior = behavior,
                             allowedCategories = selectedCategories.toList(),
