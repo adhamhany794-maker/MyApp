@@ -221,8 +221,14 @@ fun AssistantScreen(
                                             color = MaterialTheme.colorScheme.secondary
                                         )
                                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                        val whenText = if (proposal.routine.scheduleStartTime.isNotBlank() && proposal.routine.scheduleEndTime.isNotBlank()) {
+                                            if (strings.isArabic) "من ${proposal.routine.scheduleStartTime} إلى ${proposal.routine.scheduleEndTime}"
+                                            else "From ${proposal.routine.scheduleStartTime} to ${proposal.routine.scheduleEndTime}"
+                                        } else {
+                                            proposal.triggerSummary
+                                        }
                                         Text(
-                                            text = "${if (strings.isArabic) "متى" else "WHEN"}: ${proposal.triggerSummary} (${proposal.endTimeLabel})",
+                                            text = "${if (strings.isArabic) "متى" else "WHEN"}: $whenText",
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                         Text(

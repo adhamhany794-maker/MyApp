@@ -602,6 +602,8 @@ class RoutineJsonValidatorTest {
         assertEquals("8:00 م", reply.proposal!!.routine.scheduleStartTime)
         assertEquals("10:00 ص", reply.proposal!!.endTimeLabel)
         assertEquals(SoundMode.SILENT.name, reply.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+        assertEquals("تفعيل الوضع الصامت", reply.proposal!!.actionSummary)
+        assertEquals("جهات الطوارئ مستثناة دائماً ولا يمكن حجبها", reply.proposal!!.exceptionSummary)
     }
 
     @Test
@@ -635,6 +637,8 @@ class RoutineJsonValidatorTest {
         assertEquals("9:00 ص", reply2.proposal!!.routine.scheduleStartTime)
         assertEquals("10:00 م", reply2.proposal!!.endTimeLabel)
         assertEquals(SoundMode.SILENT.name, reply2.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+        assertEquals("تفعيل الوضع الصامت", reply2.proposal!!.actionSummary)
+        assertEquals("جهات الطوارئ مستثناة دائماً ولا يمكن حجبها", reply2.proposal!!.exceptionSummary)
     }
 
     @Test
@@ -645,5 +649,7 @@ class RoutineJsonValidatorTest {
         assertNotNull(reply.proposal)
         assertEquals("11:00 م", reply.proposal!!.routine.scheduleStartTime)
         assertEquals("7:00 ص", reply.proposal!!.endTimeLabel)
+        assertEquals(SoundMode.SILENT.name, reply.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+        assertEquals("تفعيل الوضع الصامت", reply.proposal!!.actionSummary)
     }
 }

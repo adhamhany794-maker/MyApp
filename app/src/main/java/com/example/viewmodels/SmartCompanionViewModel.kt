@@ -8,6 +8,7 @@ import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
 import com.example.data.AppPreferences
+import com.example.models.ActionType
 import com.example.models.ActiveFocusSession
 import com.example.models.ActivityEvent
 import com.example.models.AppLanguage
@@ -15,12 +16,16 @@ import com.example.models.AssistantMessage
 import com.example.models.ConflictResolutionPolicy
 import com.example.models.DayFilter
 import com.example.models.EventCategory
+import com.example.models.ExceptionType
 import com.example.models.FocusSessionRecord
 import com.example.models.InterruptionDecision
 import com.example.models.InterruptionType
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
 import com.example.models.RoutineProposal
+import com.example.models.RuleAction
+import com.example.models.RuleException
+import com.example.models.RuleTrigger
 import com.example.models.SimulatedActivity
 import com.example.models.SimulatedLocation
 import com.example.models.SimulationContextState
@@ -29,6 +34,7 @@ import com.example.models.SmartProfile
 import com.example.models.SmartRoutine
 import com.example.models.SoundMode
 import com.example.models.ThemeMode
+import com.example.models.TriggerType
 import com.example.repositories.SmartCompanionRepository
 import com.example.simulation.AutomationSimulationEngine
 import com.example.simulation.DeviceActionCommand
@@ -996,12 +1002,34 @@ class SmartCompanionViewModel(
                 if (_clarificationTurnCount.value >= 2) {
                     val draft = _pendingRoutineDraft.value ?: LocalDemoAssistantEngine().processPrompt(trimmed, snapshot).proposal?.routine
                     if (draft != null) {
+                        val isAr = isArabic()
+                        val soundAction = draft.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }
+                        val soundMode = soundAction?.let { action ->
+                            runCatching { SoundMode.valueOf(action.targetValue) }.getOrNull()
+                        } ?: SoundMode.SILENT
+                        val actionSummary = if (isAr) {
+                            when (soundMode) {
+                                SoundMode.SILENT -> "تفعيل الوضع الصامت"
+                                SoundMode.VIBRATE -> "تفعيل وضع الاهتزاز"
+                                SoundMode.SOUND -> "تفعيل وضع الصوت العادي"
+                            }
+                        } else {
+                            when (soundMode) {
+                                SoundMode.SILENT -> "Set phone to Silent"
+                                SoundMode.VIBRATE -> "Set phone to Vibrate"
+                                SoundMode.SOUND -> "Set phone to Sound"
+                            }
+                        }
+                        val startLabel = draft.scheduleStartTime.ifBlank { TimeUtils.formatTime12h(draft.trigger.hour, draft.trigger.minute, isAr) }
+                        val endLabel = draft.scheduleEndTime.ifBlank { TimeUtils.formatTime12h((draft.trigger.hour + 2) % 24, draft.trigger.minute, isAr) }
+                        val triggerSummary = if (isAr) "يومياً من $startLabel إلى $endLabel" else "Daily from $startLabel to $endLabel"
+                        val exceptionSummary = if (isAr) "جهات الطوارئ مستثناة دائماً ولا يمكن حجبها" else "Emergency contacts always allowed"
                         RoutineProposal(
-                            routine = draft,
-                            triggerSummary = draft.trigger.summary,
-                            endTimeLabel = draft.scheduleEndTime,
-                            actionSummary = "Activate profile & Sound mode",
-                            exceptionSummary = "Emergency contacts always allowed"
+                            routine = draft.copy(scheduleStartTime = startLabel, scheduleEndTime = endLabel),
+                            triggerSummary = triggerSummary,
+                            endTimeLabel = endLabel,
+                            actionSummary = actionSummary,
+                            exceptionSummary = exceptionSummary
                         )
                     } else null
                 } else null
@@ -1011,7 +1039,36 @@ class SmartCompanionViewModel(
                 reply.proposal
             }
 
-            if (effectiveProposal != null && _pendingRoutineDraft.value == null) {
+            if (_pendingRoutineDraft.value == null && reply.proposal == null) {
+                val lower = trimmed.lowercase()
+                val soundMode = when {
+                    lower.contains("vibrate") || lower.contains("اهتزاز") -> SoundMode.VIBRATE
+                    lower.contains("sound") || lower.contains("عادي") || (lower.contains("صوت") && !lower.contains("صامت") && !lower.contains("بدون")) -> SoundMode.SOUND
+                    else -> SoundMode.SILENT
+                }
+                val isAr = isArabic()
+                _pendingRoutineDraft.value = SmartRoutine(
+                    id = "routine_draft_${UUID.randomUUID().toString().take(6)}",
+                    name = if (isAr) "روتين مخصص" else "Custom Routine",
+                    description = trimmed,
+                    isEnabled = true,
+                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 20, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
+                    conditions = emptyList(),
+                    actions = listOf(
+                        RuleAction(ActionType.ACTIVATE_PROFILE, "profile_study", "Activate profile"),
+                        RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated ${soundMode.displayName} Mode")
+                    ),
+                    exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts")),
+                    priority = 5,
+                    scheduleStartTime = "",
+                    scheduleEndTime = "",
+                    targetProfileId = "profile_study",
+                    lastExecutionResult = "",
+                    lastExecutedAtMillis = null,
+                    executionCount = 0,
+                    skippedCount = 0
+                )
+            } else if (effectiveProposal != null) {
                 _pendingRoutineDraft.value = effectiveProposal.routine
             }
 
