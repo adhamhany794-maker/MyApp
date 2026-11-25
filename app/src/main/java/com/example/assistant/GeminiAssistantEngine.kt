@@ -21,7 +21,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "GeminiAssistantEngine"
-private const val GEMINI_TIMEOUT_MS = 45_000L
 
 class GeminiAssistantEngine(
     private val context: Context? = null,
@@ -29,7 +28,8 @@ class GeminiAssistantEngine(
     private val connectivityChecker: (() -> Boolean)? = null,
     private val modelInvoker: (suspend (String) -> String?)? = null,
     private val modelByNameInvoker: (suspend (modelName: String, prompt: String) -> String?)? = null,
-    private val retryDelayMs: Long = HIGH_DEMAND_RETRY_DELAY_MS
+    private val retryDelayMs: Long = RETRY_DELAY_MS,
+    private val attemptTimeoutMs: Long = ATTEMPT_TIMEOUT_MS
 ) : CompanionAssistantEngine {
 
     private val routineResponseSchema: Schema by lazy {
@@ -144,30 +144,44 @@ class GeminiAssistantEngine(
         }
 
         val fullPrompt = buildModelPrompt(prompt, state, isArabic)
+        val failures = mutableListOf<AttemptFailure>()
 
-        return try {
-            val rawJson = withTimeout(GEMINI_TIMEOUT_MS) {
-                try {
-                    invokeWithHighDemandRetry(PRIMARY_MODEL_NAME, fullPrompt)
-                } catch (e: TimeoutCancellationException) {
-                    throw e
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    if (isTransientHighDemandError(e)) {
-                        Log.w(
-                            TAG,
-                            "Primary model $PRIMARY_MODEL_NAME unavailable after $MAX_HIGH_DEMAND_RETRIES retries; falling back to $FALLBACK_MODEL_NAME",
-                            e
-                        )
-                        invokeWithHighDemandRetry(FALLBACK_MODEL_NAME, fullPrompt)
-                    } else {
-                        throw e
-                    }
-                }
-            }.orEmpty()
+        // 1. Primary model (12s timeout)
+        val primaryOutcome = executeTimedAttempt(
+            attemptLabel = "Attempt 1 (primary)",
+            modelName = PRIMARY_MODEL_NAME,
+            fullPrompt = fullPrompt,
+            failures = failures
+        )
+        var rawJson = primaryOutcome.json
+        var shouldTryFallback = primaryOutcome.shouldTryFallback
 
-            when (val validated = RoutineJsonValidator.parseAndValidate(
+        // 2. If primary failed with 503 / high demand / timeout -> wait 1s, retry primary once (12s timeout)
+        if (rawJson == null && primaryOutcome.shouldRetryPrimary) {
+            if (retryDelayMs > 0L) delay(retryDelayMs)
+            val retryOutcome = executeTimedAttempt(
+                attemptLabel = "Attempt 2 (primary retry)",
+                modelName = PRIMARY_MODEL_NAME,
+                fullPrompt = fullPrompt,
+                failures = failures
+            )
+            rawJson = retryOutcome.json
+            shouldTryFallback = retryOutcome.shouldTryFallback
+        }
+
+        // 3. If still no response -> try fallback model once (12s timeout)
+        if (rawJson == null && shouldTryFallback) {
+            val fallbackOutcome = executeTimedAttempt(
+                attemptLabel = "Attempt ${failures.size + 1} (fallback)",
+                modelName = FALLBACK_MODEL_NAME,
+                fullPrompt = fullPrompt,
+                failures = failures
+            )
+            rawJson = fallbackOutcome.json
+        }
+
+        if (rawJson != null) {
+            return when (val validated = RoutineJsonValidator.parseAndValidate(
                 rawJson = rawJson,
                 originalPrompt = prompt,
                 existingRoutines = state.routines,
@@ -183,29 +197,29 @@ class GeminiAssistantEngine(
                     AssistantReply(text = validated.question)
                 }
             }
-        } catch (e: TimeoutCancellationException) {
-            val errorDetail = formatErrorDetails(e)
-            Log.e(TAG, "Gemini request timed out: $errorDetail", e)
-            runOfflineFallback(prompt, state, isArabic, isOffline = false, debugError = errorDetail)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val errorDetail = formatErrorDetails(e)
-            val debugToken = readPersistedAppCheckDebugToken()
-            Log.e(
-                TAG,
-                "Gemini call failed: $errorDetail" +
-                    (if (debugToken != null) " | AppCheckDebugToken=$debugToken" else ""),
-                e
-            )
-            runOfflineFallback(
-                prompt = prompt,
-                state = state,
-                isArabic = isArabic,
-                isOffline = false,
-                debugError = if (debugToken != null) "$errorDetail\nApp Check debug token: $debugToken" else errorDetail
-            )
         }
+
+        // 4. Local assistant as last fallback
+        val debugToken = readPersistedAppCheckDebugToken()
+        val attemptLog = failures.joinToString("\n") { f ->
+            "${f.attemptLabel} [${f.modelName}] failed in ${f.elapsedMs} ms: ${f.errorSummary}"
+        }
+        val debugDetails = buildString {
+            append(attemptLog)
+            if (debugToken != null) {
+                if (isNotEmpty()) append("\n")
+                append("App Check debug token: $debugToken")
+            }
+        }.ifBlank { null }
+
+        Log.e(TAG, "All Gemini attempts failed; falling back to local assistant.\n$debugDetails")
+        return runOfflineFallback(
+            prompt = prompt,
+            state = state,
+            isArabic = isArabic,
+            isOffline = false,
+            debugError = debugDetails
+        )
     }
 
     private suspend fun runOfflineFallback(
@@ -290,28 +304,52 @@ class GeminiAssistantEngine(
         )
     }
 
-    private suspend fun invokeWithHighDemandRetry(modelName: String, fullPrompt: String): String? {
-        for (attempt in 0..MAX_HIGH_DEMAND_RETRIES) {
-            try {
-                return invokeSingleModel(modelName, fullPrompt)
-            } catch (e: TimeoutCancellationException) {
-                throw e
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (isTransientHighDemandError(e) && attempt < MAX_HIGH_DEMAND_RETRIES) {
-                    Log.w(
-                        TAG,
-                        "Model $modelName hit 503/high-demand (attempt ${attempt + 1}/${MAX_HIGH_DEMAND_RETRIES + 1}); retrying in ${retryDelayMs}ms",
-                        e
-                    )
-                    if (retryDelayMs > 0L) delay(retryDelayMs)
-                } else {
-                    throw e
-                }
-            }
+    private data class AttemptFailure(
+        val attemptLabel: String,
+        val modelName: String,
+        val elapsedMs: Long,
+        val errorSummary: String
+    )
+
+    private data class AttemptOutcome(
+        val json: String?,
+        val shouldRetryPrimary: Boolean = false,
+        val shouldTryFallback: Boolean = false
+    )
+
+    private suspend fun executeTimedAttempt(
+        attemptLabel: String,
+        modelName: String,
+        fullPrompt: String,
+        failures: MutableList<AttemptFailure>
+    ): AttemptOutcome {
+        val startNanos = System.nanoTime()
+        return try {
+            val responseText = withTimeout(attemptTimeoutMs) {
+                invokeSingleModel(modelName, fullPrompt)
+            }.orEmpty()
+            AttemptOutcome(json = responseText)
+        } catch (e: TimeoutCancellationException) {
+            val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L
+            val summary = formatErrorDetails(e)
+            Log.w(TAG, "$attemptLabel [$modelName] timed out after ${elapsedMs}ms: $summary", e)
+            failures += AttemptFailure(attemptLabel, modelName, elapsedMs, summary)
+            AttemptOutcome(json = null, shouldRetryPrimary = true, shouldTryFallback = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L
+            val summary = formatErrorDetails(e)
+            Log.w(TAG, "$attemptLabel [$modelName] failed after ${elapsedMs}ms: $summary", e)
+            failures += AttemptFailure(attemptLabel, modelName, elapsedMs, summary)
+            val transient = isTransientHighDemandError(e)
+            val authOrAppCheckBlocked = isAppCheckOrAuthError(e)
+            AttemptOutcome(
+                json = null,
+                shouldRetryPrimary = transient,
+                shouldTryFallback = !authOrAppCheckBlocked
+            )
         }
-        return null
     }
 
     private suspend fun invokeSingleModel(modelName: String, fullPrompt: String): String? {
@@ -336,6 +374,18 @@ class GeminiAssistantEngine(
             details.contains("service unavailable") ||
             details.contains("temporarily unavailable") ||
             details.contains("serviceunavailable")
+    }
+
+    private fun isAppCheckOrAuthError(throwable: Throwable): Boolean {
+        val details = generateSequence(throwable) { it.cause }
+            .take(5)
+            .joinToString(" | ") { "${it.javaClass.name}: ${it.message.orEmpty()}" }
+            .lowercase()
+        return details.contains("403") ||
+            details.contains("401") ||
+            details.contains("app check") ||
+            details.contains("appcheck") ||
+            details.contains("permission_denied")
     }
 
     private fun formatErrorDetails(throwable: Throwable): String {
@@ -410,8 +460,8 @@ class GeminiAssistantEngine(
     companion object {
         const val PRIMARY_MODEL_NAME = "gemini-3.8-flash"
         const val FALLBACK_MODEL_NAME = "gemini-3.5-flash-lite"
-        private const val MAX_HIGH_DEMAND_RETRIES = 2
-        private const val HIGH_DEMAND_RETRY_DELAY_MS = 1_200L
+        private const val ATTEMPT_TIMEOUT_MS = 12_000L
+        private const val RETRY_DELAY_MS = 1_000L
 
         private const val SYSTEM_INSTRUCTION = """
 You are the Smart Companion routine builder assistant.

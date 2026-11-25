@@ -76,7 +76,9 @@ fun AssistantScreen(
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.assistantMessages.size, state.isAssistantThinking) {
-        if (state.assistantMessages.isNotEmpty()) {
+        if (state.isAssistantThinking) {
+            listState.animateScrollToItem(state.assistantMessages.size)
+        } else if (state.assistantMessages.isNotEmpty()) {
             listState.animateScrollToItem(state.assistantMessages.lastIndex)
         }
     }
@@ -310,16 +312,29 @@ fun AssistantScreen(
 
             if (state.isAssistantThinking) {
                 item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(
+                            topStart = 18.dp,
+                            topEnd = 18.dp,
+                            bottomStart = 4.dp,
+                            bottomEnd = 18.dp
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.testTag("assistant_thinking_indicator")
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text(
-                            strings.assistantThinking,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text(
+                                strings.assistantThinking,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
