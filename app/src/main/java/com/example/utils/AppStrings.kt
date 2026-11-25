@@ -211,6 +211,7 @@ abstract class AppStrings {
     abstract val profileDescLabel: String
     abstract val defaultFocusMinsLabel: String
     abstract val allowEmergencyContacts: String
+    abstract val allowEmergencyAlwaysNote: String
     abstract val allowHighPriorityContacts: String
     abstract val allowedCategoriesLabel: String
     abstract val profileNameError: String
@@ -837,6 +838,7 @@ private object EnglishAppStrings : AppStrings() {
     override val profileDescLabel = "What does this profile do?"
     override val defaultFocusMinsLabel = "Default Focus Minutes"
     override val allowEmergencyContacts = "Allow Emergency Contacts"
+    override val allowEmergencyAlwaysNote = "Always on — emergency callers and messages get through in every profile."
     override val allowHighPriorityContacts = "Allow High-Priority Contacts"
     override val allowedCategoriesLabel = "Allowed Notification Categories"
     override val profileNameError = "Please enter a profile name."
@@ -1211,6 +1213,7 @@ private object ArabicAppStrings : AppStrings() {
     override val profileDescLabel = "ماذا يغيّر هذا الوضع؟"
     override val defaultFocusMinsLabel = "دقائق التركيز الافتراضية"
     override val allowEmergencyContacts = "السماح لجهات الطوارئ"
+    override val allowEmergencyAlwaysNote = "مفعّل دائماً — مكالمات ورسائل الطوارئ تصلك في جميع الأوضاع دون استثناء."
     override val allowHighPriorityContacts = "السماح لجهات الأولوية العالية"
     override val allowedCategoriesLabel = "فئات الإشعارات المسموحة"
     override val profileNameError = "يرجى إدخال اسم الوضع."

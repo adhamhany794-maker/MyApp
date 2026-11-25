@@ -350,7 +350,6 @@ private fun ProfileEditorDialog(
         mutableStateOf(if (isNew) initial.description else strings.localizedProfileDescription(initial))
     }
     var soundMode by remember { mutableStateOf(initial.soundMode) }
-    var allowEmergency by remember { mutableStateOf(initial.allowEmergencyContacts) }
     var allowHighPriority by remember { mutableStateOf(initial.allowHighPriorityContacts) }
     var selectedCategories by remember { mutableStateOf(initial.allowedCategories.toSet()) }
     var focusMinutes by remember { mutableStateOf(initial.defaultFocusMinutes.toString()) }
@@ -400,13 +399,30 @@ private fun ProfileEditorDialog(
                         )
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(strings.allowEmergencyContacts, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Switch(checked = allowEmergency, onCheckedChange = { allowEmergency = it })
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            strings.allowEmergencyContacts,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = true,
+                            onCheckedChange = null,
+                            enabled = false,
+                            modifier = Modifier.testTag("profile_emergency_locked_switch")
+                        )
+                    }
+                    Text(
+                        text = strings.allowEmergencyAlwaysNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("profile_emergency_locked_note")
+                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -446,18 +462,17 @@ private fun ProfileEditorDialog(
                         return@Button
                     }
                     val mins = focusMinutes.toIntOrNull()?.coerceIn(5, 480) ?: 30
-                    val behavior = buildString {
-                        if (allowEmergency) append("Emergency contacts allowed")
-                        if (allowEmergency && allowHighPriority) append("; ")
-                        if (allowHighPriority) append("High-Priority contacts allowed")
-                        if (!allowEmergency && !allowHighPriority) append("All callers filtered")
+                    val behavior = if (allowHighPriority) {
+                        "Emergency contacts always allowed; High-Priority contacts allowed"
+                    } else {
+                        "Emergency contacts always allowed"
                     }
                     onSave(
                         initial.copy(
                             name = name.trim(),
                             description = description.trim().ifEmpty { "Custom smart phone profile." },
                             soundMode = soundMode,
-                            allowEmergencyContacts = allowEmergency,
+                            allowEmergencyContacts = true,
                             allowHighPriorityContacts = allowHighPriority,
                             priorityContactBehavior = behavior,
                             allowedCategories = selectedCategories.toList(),

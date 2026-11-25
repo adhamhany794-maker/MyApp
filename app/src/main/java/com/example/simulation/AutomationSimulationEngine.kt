@@ -277,6 +277,10 @@ class AutomationSimulationEngine {
         val reason: String
 
         when {
+            contact.priorityLevel == ContactPriority.EMERGENCY -> {
+                isAllowed = true
+                reason = "Emergency contacts always get through — ${interruptionType.displayName} from ${contact.name} bypassed ${activeProfile.name} (${activeProfile.soundMode.displayName})."
+            }
             isSoundNormal -> {
                 isAllowed = true
                 reason = "${activeProfile.name} uses Sound mode, so interruptions from ${contact.name} are allowed."
@@ -284,17 +288,6 @@ class AutomationSimulationEngine {
             isRepeatCaller && contact.allowRepeatCallers -> {
                 isAllowed = true
                 reason = "Repeat-caller emergency safeguard allowed ${contact.name} through ${activeProfile.name} (${activeProfile.soundMode.displayName})."
-            }
-            contactActive && contact.priorityLevel == ContactPriority.EMERGENCY && activeProfile.allowEmergencyContacts -> {
-                val typePermitted = contact.allowedInterruptions.contains(interruptionType) ||
-                    interruptionType == InterruptionType.CALL
-                if (typePermitted) {
-                    isAllowed = true
-                    reason = "Emergency contact exception allowed ${interruptionType.displayName} from ${contact.name} during ${activeProfile.name}."
-                } else {
-                    isAllowed = false
-                    reason = "${contact.name} only permits specific emergency channels; ${interruptionType.displayName} is held."
-                }
             }
             contactActive && contact.priorityLevel == ContactPriority.HIGH_PRIORITY && activeProfile.allowHighPriorityContacts -> {
                 if (contact.allowedInterruptions.contains(interruptionType)) {

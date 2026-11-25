@@ -3,13 +3,19 @@ package com.example
 import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.LocalDemoAssistantEngine
 import com.example.data.DemoSeedData
+import com.example.models.ActionType
 import com.example.models.AppLanguage
 import com.example.models.ConflictResolutionPolicy
 import com.example.models.ContactPriority
 import com.example.models.DayFilter
 import com.example.models.InterruptionType
+import com.example.models.PriorityContact
+import com.example.models.RuleAction
+import com.example.models.RuleTrigger
 import com.example.models.SimulationContextState
+import com.example.models.SmartRoutine
 import com.example.models.SoundMode
+import com.example.models.TriggerType
 import com.example.simulation.AndroidDeviceActionExecutor
 import com.example.simulation.AutomationSimulationEngine
 import com.example.simulation.DeviceActionCommand
@@ -233,6 +239,205 @@ class SmartCompanionCoreTest {
             val arHelp = FeatureExplanations.get(topic, isArabic = true)
             assertTrue(enHelp.title.isNotBlank() && enHelp.whatItIs.isNotBlank() && enHelp.whatHappens.isNotBlank())
             assertTrue(arHelp.title.isNotBlank() && arHelp.whatItIs.isNotBlank() && arHelp.whatHappens.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `emergency contacts pass unconditionally in every profile even when toggle off or channel restricted`() {
+        val restrictedEmergencyContact = PriorityContact(
+            id = "contact_em_restricted",
+            name = "Emergency Only Calls",
+            initials = "EC",
+            relationship = "Family",
+            priorityLevel = ContactPriority.EMERGENCY,
+            allowedInterruptions = listOf(InterruptionType.CALL),
+            isEnabled = true,
+            allowRepeatCallers = false
+        )
+        val noChannelsEmergencyContact = restrictedEmergencyContact.copy(
+            id = "contact_em_none",
+            allowedInterruptions = emptyList(),
+            isEnabled = false
+        )
+        val allTestContacts = contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY } +
+            listOf(restrictedEmergencyContact, noChannelsEmergencyContact)
+
+        val lockedSilentProfile = profiles.first { it.id == "profile_sleep" }.copy(
+            id = "profile_locked_silent",
+            name = "Strict Silent",
+            soundMode = SoundMode.SILENT,
+            allowEmergencyContacts = false,
+            allowHighPriorityContacts = false,
+            allowedCategories = emptyList()
+        )
+        val allProfiles = profiles.map { it.copy(allowEmergencyContacts = false) } + profiles + lockedSilentProfile
+
+        for (profile in allProfiles) {
+            for (emergency in allTestContacts) {
+                for (channel in listOf(InterruptionType.CALL, InterruptionType.MESSAGE, InterruptionType.REPEAT_CALLER)) {
+                    val decision = engine.simulateIncomingInterruption(
+                        contact = emergency,
+                        interruptionType = channel,
+                        isRepeatCaller = false,
+                        activeProfile = profile
+                    )
+                    assertTrue(
+                        "Expected ${emergency.name} ($channel) to pass in ${profile.name} (${profile.soundMode}, allowEmergency=${profile.allowEmergencyContacts})",
+                        decision.isAllowed
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `emergency contacts pass in every routine and conflict resolution policy`() {
+        val emergencyContacts = contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY }
+        val strictNoExceptionRoutine = SmartRoutine(
+            id = "routine_strict_silent",
+            name = "Strict Silent No Exceptions",
+            description = "Silent mode without explicit emergency exceptions",
+            isEnabled = true,
+            trigger = RuleTrigger(type = TriggerType.MANUAL, summary = "Manual"),
+            conditions = emptyList(),
+            actions = listOf(
+                RuleAction(ActionType.ACTIVATE_PROFILE, "profile_sleep", "Activate Sleep"),
+                RuleAction(ActionType.SET_SOUND_MODE, SoundMode.SILENT.name, "Set Silent")
+            ),
+            exceptions = emptyList(),
+            priority = 10,
+            scheduleStartTime = "10:00 PM",
+            scheduleEndTime = "6:00 AM",
+            targetProfileId = "profile_sleep",
+            lastExecutionResult = "Ready",
+            lastExecutedAtMillis = null,
+            executionCount = 0,
+            skippedCount = 0
+        )
+        val allRoutines = routines + strictNoExceptionRoutine
+
+        // Every routine individually
+        for (routine in allRoutines) {
+            val output = engine.evaluate(
+                event = SimulationEvent.ManualRoutine(routine.id),
+                routines = allRoutines,
+                profiles = profiles,
+                context = SimulationContextState(18, 0, DayFilter.WEDNESDAY),
+                isAutomationPaused = false,
+                activeProfileId = "profile_personal",
+                isFocusActive = false,
+                conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
+            )
+            val baseProfile = profiles.firstOrNull { it.id == output.targetProfileId }
+                ?: profiles.first { it.id == "profile_personal" }
+            val resultingProfile = baseProfile.copy(
+                soundMode = output.targetSoundMode ?: baseProfile.soundMode,
+                allowEmergencyContacts = false
+            )
+            for (emergency in emergencyContacts) {
+                for (channel in listOf(InterruptionType.CALL, InterruptionType.MESSAGE)) {
+                    val decision = engine.simulateIncomingInterruption(
+                        contact = emergency,
+                        interruptionType = channel,
+                        isRepeatCaller = false,
+                        activeProfile = resultingProfile
+                    )
+                    assertTrue(
+                        "Routine ${routine.name} must not block ${emergency.name} ($channel)",
+                        decision.isAllowed
+                    )
+                }
+            }
+        }
+
+        // Conflict resolution under every policy (ASK_USER, HIGHEST_PRIORITY, KEEP_CURRENT)
+        for (policy in ConflictResolutionPolicy.entries) {
+            val conflictOutput = engine.evaluate(
+                event = SimulationEvent.TimeAndDay(18, 0, DayFilter.WEDNESDAY),
+                routines = routines,
+                profiles = profiles,
+                context = SimulationContextState(18, 0, DayFilter.WEDNESDAY),
+                isAutomationPaused = false,
+                activeProfileId = "profile_study",
+                isFocusActive = false,
+                conflictPolicy = policy
+            )
+            assertTrue(conflictOutput.trace.conflictDetected)
+
+            val selected = conflictOutput.selectedRoutine
+            val resolvedOutput = if (conflictOutput.trace.requiresUserConfirmation && selected != null) {
+                engine.executeConfirmedRoutine(
+                    winner = selected,
+                    conflictingNames = conflictOutput.trace.matchingRoutineNames,
+                    triggerLabel = conflictOutput.trace.triggerReceived,
+                    conflictExplanation = conflictOutput.trace.conflictExplanation
+                )
+            } else {
+                conflictOutput
+            }
+
+            val resultingProfile = (profiles.firstOrNull { it.id == resolvedOutput.targetProfileId }
+                ?: profiles.first { it.id == "profile_study" }).copy(
+                soundMode = resolvedOutput.targetSoundMode ?: SoundMode.SILENT,
+                allowEmergencyContacts = false
+            )
+            for (emergency in emergencyContacts) {
+                assertTrue(
+                    engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, resultingProfile).isAllowed
+                )
+                assertTrue(
+                    engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, resultingProfile).isAllowed
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `emergency contacts pass during active focus session and global pause state`() {
+        val emergencyContacts = contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY }
+        val customFocusProfile = profiles.first { it.id == "profile_custom" }.copy(
+            soundMode = SoundMode.SILENT,
+            allowEmergencyContacts = false,
+            allowHighPriorityContacts = false
+        )
+
+        // Focus session active (isFocusActive = true)
+        val focusOutput = engine.evaluate(
+            event = SimulationEvent.FocusLifecycle(started = true),
+            routines = routines,
+            profiles = profiles,
+            context = SimulationContextState(14, 0, DayFilter.TUESDAY),
+            isAutomationPaused = false,
+            activeProfileId = customFocusProfile.id,
+            isFocusActive = true,
+            conflictPolicy = ConflictResolutionPolicy.HIGHEST_PRIORITY
+        )
+        val focusProfile = (profiles.firstOrNull { it.id == focusOutput.targetProfileId } ?: customFocusProfile).copy(
+            soundMode = focusOutput.targetSoundMode ?: SoundMode.SILENT,
+            allowEmergencyContacts = false
+        )
+        for (emergency in emergencyContacts) {
+            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, focusProfile).isAllowed)
+            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, focusProfile).isAllowed)
+        }
+
+        // Global automation pause active (isAutomationPaused = true)
+        val pausedOutput = engine.evaluate(
+            event = SimulationEvent.TimeAndDay(9, 0, DayFilter.MONDAY),
+            routines = routines,
+            profiles = profiles,
+            context = SimulationContextState(9, 0, DayFilter.MONDAY),
+            isAutomationPaused = true,
+            activeProfileId = customFocusProfile.id,
+            isFocusActive = false,
+            conflictPolicy = ConflictResolutionPolicy.ASK_USER
+        )
+        assertNull(pausedOutput.selectedRoutine)
+        for (profile in profiles.map { it.copy(allowEmergencyContacts = false) }) {
+            for (emergency in emergencyContacts) {
+                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, profile).isAllowed)
+                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, profile).isAllowed)
+            }
         }
     }
 }
