@@ -951,6 +951,9 @@ class SmartCompanionViewModel(
         }
     }
 
+    private val _pendingRoutineDraft = MutableStateFlow<SmartRoutine?>(null)
+    private val _clarificationTurnCount = MutableStateFlow(0)
+
     // --- AI Assistant ---
     fun sendAssistantPrompt(prompt: String) {
         val trimmed = prompt.trim()
@@ -982,9 +985,35 @@ class SmartCompanionViewModel(
                 notificationStats = state.notificationStats,
                 focusSessions = state.focusSessions,
                 recentEvents = state.activityEvents,
-                recentConversation = history
+                recentConversation = history,
+                pendingRoutineDraft = _pendingRoutineDraft.value,
+                clarificationTurnCount = _clarificationTurnCount.value
             )
             val reply = assistantEngine.processPrompt(trimmed, snapshot)
+
+            val effectiveProposal = if (reply.proposal == null) {
+                _clarificationTurnCount.update { it + 1 }
+                if (_clarificationTurnCount.value >= 2) {
+                    val draft = _pendingRoutineDraft.value ?: LocalDemoAssistantEngine().processPrompt(trimmed, snapshot).proposal?.routine
+                    if (draft != null) {
+                        RoutineProposal(
+                            routine = draft,
+                            triggerSummary = draft.trigger.summary,
+                            endTimeLabel = draft.scheduleEndTime,
+                            actionSummary = "Activate profile & Sound mode",
+                            exceptionSummary = "Emergency contacts always allowed"
+                        )
+                    } else null
+                } else null
+            } else {
+                _pendingRoutineDraft.value = reply.proposal.routine
+                _clarificationTurnCount.value = 0
+                reply.proposal
+            }
+
+            if (effectiveProposal != null && _pendingRoutineDraft.value == null) {
+                _pendingRoutineDraft.value = effectiveProposal.routine
+            }
 
             if (BuildConfig.DEBUG && !reply.debugErrorLog.isNullOrBlank()) {
                 repository.logEvent(
@@ -999,9 +1028,14 @@ class SmartCompanionViewModel(
             val assistantMsg = AssistantMessage(
                 id = UUID.randomUUID().toString(),
                 isUser = false,
-                text = reply.text,
+                text = if (effectiveProposal != null && reply.proposal == null) {
+                    if (isArabic()) "بعد عدة توضيحات، جهّزت لك هذا الروتين للمراجعة:"
+                    else "After a couple of clarifications, I prepared this routine for your review:"
+                } else {
+                    reply.text
+                },
                 timestampMillis = System.currentTimeMillis(),
-                proposal = reply.proposal,
+                proposal = effectiveProposal ?: reply.proposal,
                 noticeText = reply.noticeText
             )
             _assistantMessages.update { it + assistantMsg }
@@ -1012,6 +1046,8 @@ class SmartCompanionViewModel(
     fun confirmAssistantProposal(messageId: String, proposal: RoutineProposal) {
         viewModelScope.launch {
             repository.upsertRoutine(proposal.routine)
+            _pendingRoutineDraft.value = null
+            _clarificationTurnCount.value = 0
             val note = if (isArabic()) {
                 "تم التأكيد وإضافة '${proposal.routine.name}' إلى الروتينات الذكية."
             } else {
@@ -1041,6 +1077,8 @@ class SmartCompanionViewModel(
 
     fun editAssistantProposal(messageId: String, proposal: RoutineProposal) {
         _routineDraftFromAssistant.value = proposal.routine
+        _pendingRoutineDraft.value = null
+        _clarificationTurnCount.value = 0
         val note = if (isArabic()) {
             "تم فتح '${proposal.routine.name}' في منشئ القواعد المرئي للتعديل."
         } else {
@@ -1056,6 +1094,8 @@ class SmartCompanionViewModel(
     }
 
     fun cancelAssistantProposal(messageId: String) {
+        _pendingRoutineDraft.value = null
+        _clarificationTurnCount.value = 0
         val note = if (isArabic()) "تم الإلغاء — لم يتم إنشاء الروتين." else "Cancelled — routine was not created."
         _assistantMessages.update { list ->
             list.map { msg ->
@@ -1071,6 +1111,8 @@ class SmartCompanionViewModel(
     }
 
     fun clearAssistantConversation() {
+        _pendingRoutineDraft.value = null
+        _clarificationTurnCount.value = 0
         _assistantMessages.value = initialAssistantMessages(uiState.value.preferences.language)
         showBanner(if (isArabic()) "تم مسح المحادثة" else "Assistant conversation cleared")
     }

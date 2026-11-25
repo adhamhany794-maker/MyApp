@@ -551,4 +551,45 @@ class RoutineJsonValidatorTest {
         assertTrue(localReply.debugErrorLog!!.contains("503"))
         assertNotNull(localReply.proposal)
     }
+
+    @Test
+    fun `multiturn Arabic conversation flow reproduces steps 1 to 6 and succeeds`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        var snapshot = baseSnapshot(AppLanguage.ARABIC)
+
+        // Step 1 & 2: User requests silence in evening, assistant asks for start/end times
+        val reply1 = engine.processPrompt("اكتم هاتفي في المساء", snapshot)
+        assertNull(reply1.proposal)
+
+        val draft1 = com.example.models.SmartRoutine(
+            id = "draft_1",
+            name = "مساء هادئ",
+            description = "Draft",
+            isEnabled = true,
+            trigger = com.example.models.RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 8, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = "8:00"),
+            conditions = emptyList(),
+            actions = listOf(com.example.models.RuleAction(ActionType.SET_SOUND_MODE, SoundMode.SILENT.name, "Silent")),
+            exceptions = emptyList(),
+            priority = 5,
+            scheduleStartTime = "",
+            scheduleEndTime = "",
+            targetProfileId = "profile_study",
+            lastExecutionResult = "",
+            lastExecutedAtMillis = null,
+            executionCount = 0,
+            skippedCount = 0
+        )
+        snapshot = snapshot.copy(pendingRoutineDraft = draft1, clarificationTurnCount = 1)
+
+        // Step 3 & 4: User answers "8 to 11", assistant asks AM/PM
+        val reply2 = engine.processPrompt("8 to 11", snapshot)
+        val draft2 = draft1.copy(scheduleStartTime = "8:00 AM", scheduleEndTime = "11:00 AM")
+        snapshot = snapshot.copy(pendingRoutineDraft = draft2, clarificationTurnCount = 2)
+
+        // Step 5 & 6: User answers "مساء" (PM) -> should merge and produce proposal
+        val reply3 = engine.processPrompt("مساء", snapshot)
+        assertNotNull(reply3.proposal)
+        assertEquals("8:00 م", reply3.proposal!!.routine.scheduleStartTime)
+        assertEquals("11:00 م", reply3.proposal!!.endTimeLabel)
+    }
 }

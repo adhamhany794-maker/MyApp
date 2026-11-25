@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
 import com.example.BuildConfig
+import com.example.models.ActionType
 import com.example.models.AppLanguage
 import com.example.models.ExceptionType
 import com.example.models.RuleException
@@ -444,15 +445,24 @@ class GeminiAssistantEngine(
                 "$role: $msg"
             }
 
+        val draftSummary = if (state.pendingRoutineDraft != null) {
+            val r = state.pendingRoutineDraft
+            "Name=${r.name}, Start=${r.scheduleStartTime}, End=${r.scheduleEndTime}, Days=${r.trigger.dayFilter.name}, Action=${r.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue ?: "silent"}"
+        } else {
+            "None"
+        }
+
         return buildString {
             appendLine("Preferred response language: ${if (isArabic) "Arabic" else "English"}")
+            appendLine("Pending routine draft so far: $draftSummary")
+            appendLine("Clarification turn count: ${state.clarificationTurnCount}")
             appendLine("Existing enabled routines (for context only):")
             appendLine(existingSummary)
             if (historyText.isNotBlank()) {
-                appendLine("Recent conversation:")
+                appendLine("Recent conversation and follow-up history:")
                 appendLine(historyText)
             }
-            appendLine("Latest user message:")
+            appendLine("Latest user message/answer:")
             appendLine(prompt)
         }
     }
@@ -466,13 +476,12 @@ class GeminiAssistantEngine(
         private const val SYSTEM_INSTRUCTION = """
 You are the Smart Companion routine builder assistant.
 You MUST ONLY return valid JSON matching the schema. Do NOT output markdown or prose outside JSON.
-Your ONLY purpose is to convert user requests in English or Arabic into a routine creation proposal.
-You MUST NEVER execute or agree to any other action on the phone (do not change settings directly, send messages, check weather, or run timers). If the user asks for anything other than creating a routine, set status="needs_clarification" and set followUpQuestion to one short polite sentence explaining that you can only help create routines and asking what routine they want.
+Your ONLY purpose is to convert user requests in English or Arabic into a routine creation proposal by merging new answers into the pending routine draft.
 Rules:
-1. If any required field is missing or ambiguous (for example missing time range, days, place, or desired sound/focus mode), set status="needs_clarification" and ask ONE short follow-up question in the user's language instead of guessing.
-2. When a routine is clear, set status="ok" and fill name, trigger, conditions, action, and exceptions.
-3. For trigger.type="time_range", provide startTime and endTime in 24-hour HH:mm format (e.g. "20:00", "22:00"). If the user says "8 to 10" in a study/evening context without am/pm, you may ask whether they mean morning or evening if unclear, or use clear context cues.
-4. For trigger.type="place_enter" or "place_exit", pick the closest place from HOME, UNIVERSITY, WORKPLACE, LIBRARY; if not one of those or unclear, ask in followUpQuestion.
+1. Review the pending routine draft and full conversation history. Merge any new user answers (such as time ranges like "8 to 11" or period answers like "مساء", "evening", "pm", "م" as PM and "صباحا", "morning", "am", "ص" as AM) into the draft.
+2. NEVER ask for a field that is already filled in the pending routine draft.
+3. Ask at most ONE short follow-up question only for fields that are still missing.
+4. If clarification turn count >= 2, or if all core routine fields (name, start time, end time, action) are known, you MUST output status="ok" and return the finalized routine proposal so the confirmation card appears.
 5. action.mode MUST be one of: "sound", "vibrate", "silent", "focus".
 6. Always include "EMERGENCY_CONTACTS" in exceptions. Emergency contacts are never blocked.
 7. Write routine name and followUpQuestion in the same language as the user's message (Arabic or English).

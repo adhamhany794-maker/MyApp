@@ -33,7 +33,9 @@ data class AssistantStateSnapshot(
     val notificationStats: List<NotificationStat>,
     val focusSessions: List<FocusSessionRecord>,
     val recentEvents: List<ActivityEvent>,
-    val recentConversation: List<Pair<Boolean, String>> = emptyList()
+    val recentConversation: List<Pair<Boolean, String>> = emptyList(),
+    val pendingRoutineDraft: SmartRoutine? = null,
+    val clarificationTurnCount: Int = 0
 )
 
 data class AssistantReply(
@@ -184,27 +186,76 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             return AssistantReply(text = text)
         }
 
-        // 6. Natural-language Routine Creation Proposals (EN & AR)
-        if (isRoutineCreationIntent(lower)) {
-            val proposal = buildRoutineProposal(prompt, lower, isArabic)
-            val text = if (isArabic) {
-                "يمكنني إنشاء روتين بالإعدادات التالية:\n\n" +
-                    "• الاسم: ${proposal.routine.name}\n" +
-                    "• المُشغّل: ${proposal.triggerSummary}\n" +
-                    "• وقت الانتهاء: ${proposal.endTimeLabel}\n" +
-                    "• الإجراء: ${proposal.actionSummary}\n" +
-                    "• الاستثناء: ${proposal.exceptionSummary}\n\n" +
-                    "هل تريد مراجعة هذا الروتين أو تأكيد إنشائه؟"
-            } else {
-                "I can create a routine with the following configuration:\n\n" +
-                    "• Name: ${proposal.routine.name}\n" +
-                    "• Trigger: ${proposal.triggerSummary}\n" +
-                    "• End time: ${proposal.endTimeLabel}\n" +
-                    "• Action: ${proposal.actionSummary}\n" +
-                    "• Exception: ${proposal.exceptionSummary}\n\n" +
-                    "Would you like to review or confirm creating this routine?"
+        // 6. Natural-language Routine Creation Proposals & Multi-turn Draft Merging (EN & AR)
+        val hasDraft = state.pendingRoutineDraft != null
+        if (isRoutineCreationIntent(lower) || hasDraft) {
+            val extractedHours = extractTimeHours(lower)
+            val isSleep = lower.contains("sleep") || lower.contains("sleeping") || lower.contains("bed") || lower.contains("نوم")
+            val isStudy = lower.contains("study") || lower.contains("studying") || lower.contains("دراسة")
+            val isUniversity = lower.contains("university") || lower.contains("campus") || lower.contains("جامعة")
+            val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
+            val hasPresetDefaults = isSleep || isStudy || isUniversity || isWork || extractedHours.isNotEmpty()
+
+            if (extractedHours.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null) {
+                val text = if (isArabic) {
+                    "فهمت طلبك لإنشاء الروتين. ما هي أوقات البداية والنهاية (مثلاً من 8 إلى 11)؟"
+                } else {
+                    "I understand you want to create a routine. What are the start and end times (for example 8 to 11)?"
+                }
+                val placeholderRoutine = SmartRoutine(
+                    id = "routine_draft_${UUID.randomUUID().toString().take(6)}",
+                    name = if (isArabic) "روتين مخصص" else "Custom Routine",
+                    description = prompt,
+                    isEnabled = true,
+                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 20, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
+                    conditions = emptyList(),
+                    actions = listOf(RuleAction(ActionType.SET_SOUND_MODE, SoundMode.SILENT.name, "Silent")),
+                    exceptions = emptyList(),
+                    priority = 5,
+                    scheduleStartTime = "",
+                    scheduleEndTime = "",
+                    targetProfileId = "profile_study",
+                    lastExecutionResult = "",
+                    lastExecutedAtMillis = null,
+                    executionCount = 0,
+                    skippedCount = 0
+                )
+                return AssistantReply(text = text, proposal = null)
             }
-            return AssistantReply(text = text, proposal = proposal)
+
+            val proposal = buildOrMergeRoutineProposal(prompt, lower, isArabic, state.pendingRoutineDraft)
+            val isComplete = proposal.routine.scheduleStartTime.isNotBlank() && proposal.routine.scheduleEndTime.isNotBlank() &&
+                (lower.contains("am") || lower.contains("pm") || lower.contains("مساء") || lower.contains("صباح") || lower.contains("م") || lower.contains("ص") || existingDraftHasPeriod(state.pendingRoutineDraft, lower) || hasPresetDefaults)
+
+            val text = if (isArabic) {
+                if (isComplete || state.clarificationTurnCount >= 1) {
+                    "يمكنني إنشاء روتين بالإعدادات التالية:\n\n" +
+                        "• الاسم: ${proposal.routine.name}\n" +
+                        "• المُشغّل: ${proposal.triggerSummary}\n" +
+                        "• وقت الانتهاء: ${proposal.endTimeLabel}\n" +
+                        "• الإجراء: ${proposal.actionSummary}\n" +
+                        "• الاستثناء: ${proposal.exceptionSummary}\n\n" +
+                        "هل تريد مراجعة هذا الروتين أو تأكيد إنشائه؟"
+                } else {
+                    "هل تعني من ${proposal.routine.scheduleStartTime} إلى ${proposal.routine.scheduleEndTime} صباحاً أم مساءً؟"
+                }
+            } else {
+                if (isComplete || state.clarificationTurnCount >= 1) {
+                    "I can create a routine with the following configuration:\n\n" +
+                        "• Name: ${proposal.routine.name}\n" +
+                        "• Trigger: ${proposal.triggerSummary}\n" +
+                        "• End time: ${proposal.endTimeLabel}\n" +
+                        "• Action: ${proposal.actionSummary}\n" +
+                        "• Exception: ${proposal.exceptionSummary}\n\n" +
+                        "Would you like to review or confirm creating this routine?"
+                } else {
+                    "Do you mean ${proposal.routine.scheduleStartTime} to ${proposal.routine.scheduleEndTime} AM or PM?"
+                }
+            }
+            return AssistantReply(
+                text = text,
+                proposal = if (isComplete || state.clarificationTurnCount >= 1) proposal else null
+            )
         }
 
         val fallback = if (isArabic) {
@@ -224,12 +275,12 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             "silent", "mute", "quiet", "routine", "study", "studying",
             "sleep", "sleeping", "university", "work", "allow", "family",
             "emergency", "stop", "interruptions", "pm", "am", "schedule",
-            "organize", "create",
+            "organize", "create", "8", "9", "10", "11", "12", "to", "من", "إلى",
             "صامت", "اكتم", "كتم", "هدوء", "روتين", "دراسة", "الدراسة",
             "نوم", "النوم", "نومي", "تنظيم", "جدول", "جامعة", "الجامعة", "عمل",
             "عائلة", "عائلتي", "طوارئ", "اسمح", "سماح", "مساء", "صباح", "إشعارات"
         )
-        return keywords.count { lower.contains(it) } >= 2 ||
+        return keywords.any { lower.contains(it) } ||
             lower.contains("create a routine") ||
             lower.contains("keep my phone") ||
             lower.contains("make my phone") ||
@@ -413,6 +464,59 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         )
     }
 
+    private fun buildOrMergeRoutineProposal(
+        original: String,
+        lower: String,
+        isArabic: Boolean,
+        existingDraft: SmartRoutine?
+    ): RoutineProposal {
+        val baseProposal = buildRoutineProposal(original, lower, isArabic)
+        if (existingDraft == null) return baseProposal
+
+        val isEvening = lower.contains("مساء") || lower.contains("pm") || lower.contains("evening") || lower.contains("م")
+        val isMorning = lower.contains("صباح") || lower.contains("am") || lower.contains("morning") || lower.contains("ص")
+
+        val existingDraftHours = extractTimeHours(existingDraft.scheduleStartTime + " " + existingDraft.scheduleEndTime)
+        var startHour = existingDraftHours.firstOrNull() ?: existingDraft.trigger.hour
+        var endHour = if (existingDraftHours.size >= 2) existingDraftHours[1] else ((startHour + 3) % 24)
+
+        val extracted = extractTimeHours(lower)
+        if (extracted.isNotEmpty()) {
+            startHour = extracted.first()
+            if (extracted.size >= 2) {
+                endHour = extracted[1]
+            } else {
+                endHour = (startHour + 3) % 24
+            }
+        }
+
+        if (isEvening && startHour < 12) startHour += 12
+        if (isEvening && endHour < 12 && endHour <= startHour) endHour += 12
+        if (isMorning && startHour == 12) startHour = 0
+        if (isMorning && endHour == 12) endHour = 0
+
+        val startLabel = TimeUtils.formatTime12h(startHour, 0, isArabic)
+        val endLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)
+
+        val updatedTrigger = existingDraft.trigger.copy(
+            hour = startHour,
+            minute = 0,
+            summary = if (isArabic) "يومياً الساعة $startLabel" else "Daily at $startLabel"
+        )
+        val updatedRoutine = existingDraft.copy(
+            trigger = updatedTrigger,
+            scheduleStartTime = startLabel,
+            scheduleEndTime = endLabel,
+            description = if (isArabic) "تم التحديث بناءً على إجابتك: \"$original\"" else "Updated from your response: \"$original\""
+        )
+
+        return baseProposal.copy(
+            routine = updatedRoutine,
+            triggerSummary = updatedTrigger.summary,
+            endTimeLabel = endLabel
+        )
+    }
+
     private fun extractNumber(text: String): Int? {
         val match = Regex("(\\d+)\\s*(min|minute|minutes|m|د|دقيقة)?").find(text)
         return match?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(5, 180)
@@ -440,5 +544,14 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             }
         }.toList()
         return arMatches
+    }
+
+    private fun existingDraftHasPeriod(draft: SmartRoutine?, lower: String): Boolean {
+        if (draft == null) return false
+        return draft.scheduleStartTime.contains("AM", ignoreCase = true) ||
+            draft.scheduleStartTime.contains("PM", ignoreCase = true) ||
+            draft.scheduleStartTime.contains("صباح") ||
+            draft.scheduleStartTime.contains("مساء") ||
+            lower.contains("مساء") || lower.contains("صباح") || lower.contains("am") || lower.contains("pm")
     }
 }
