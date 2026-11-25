@@ -190,13 +190,15 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         val hasDraft = state.pendingRoutineDraft != null
         if (isRoutineCreationIntent(lower) || hasDraft) {
             val extractedHours = extractTimeHours(lower)
+            val timeRange = parseTimeRange(lower, isArabic)
             val isSleep = lower.contains("sleep") || lower.contains("sleeping") || lower.contains("bed") || lower.contains("نوم")
             val isStudy = lower.contains("study") || lower.contains("studying") || lower.contains("دراسة")
             val isUniversity = lower.contains("university") || lower.contains("campus") || lower.contains("جامعة")
             val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
-            val hasPresetDefaults = isSleep || isStudy || isUniversity || isWork || extractedHours.isNotEmpty()
+            val hasStartAndEnd = timeRange != null || extractedHours.size >= 2
+            val hasPresetDefaults = isSleep || isStudy || isUniversity || isWork || hasStartAndEnd
 
-            if (extractedHours.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null) {
+            if (extractedHours.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null && !hasStartAndEnd) {
                 val text = if (isArabic) {
                     "فهمت طلبك لإنشاء الروتين. ما هي أوقات البداية والنهاية (مثلاً من 8 إلى 11)؟"
                 } else {
@@ -288,6 +290,46 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             lower.contains("أنشئ روتين")
     }
 
+    private fun parseTimeRange(text: String, isArabic: Boolean): Pair<Int, Int>? {
+        val regex = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(صباحاً|صباحا|صبح|الصبح|صباح|ص|مساءً|مساء|م|بليل|بالليل|ليل|الليل|ضهر|ظهر|الضهر|عصر|العصر|am|pm)?")
+        val matches = regex.findAll(text).toList()
+        val hoursWithPeriods = mutableListOf<Pair<Int, String?>>()
+        for (m in matches) {
+            val hourStr = m.groupValues[1]
+            val hour = hourStr.toIntOrNull() ?: continue
+            if (hour in 0..23) {
+                val period = m.groupValues[3].takeIf { it.isNotBlank() }
+                hoursWithPeriods.add(hour to period)
+            }
+        }
+
+        if (hoursWithPeriods.isEmpty()) return null
+
+        val globalEvening = text.contains("مساء") || text.contains("بليل") || text.contains("بالليل") || text.contains("ليل") || text.contains("pm") || text.contains("م")
+        val globalMorning = text.contains("صباح") || text.contains("صبح") || text.contains("الصبح") || text.contains("am") || text.contains("ص")
+
+        val resolvedHours = hoursWithPeriods.map { (rawHour, period) ->
+            var h = rawHour
+            val p = period?.lowercase() ?: ""
+            val isPm = p.contains("مساء") || p.contains("بليل") || p.contains("ليل") || p == "م" || p == "pm"
+            val isAm = p.contains("صباح") || p.contains("صبح") || p == "ص" || p == "am"
+
+            when {
+                isPm && h < 12 -> h += 12
+                isAm && h == 12 -> h = 0
+                !isPm && !isAm -> {
+                    if (globalEvening && !globalMorning && h < 12 && h < 18) h += 12
+                    else if (globalMorning && h == 12) h = 0
+                }
+            }
+            h.coerceIn(0, 23)
+        }
+
+        val start = resolvedHours.first()
+        val end = if (resolvedHours.size >= 2) resolvedHours[1] else (start + 3) % 24
+        return start to end
+    }
+
     private fun buildRoutineProposal(
         original: String,
         lower: String,
@@ -301,8 +343,10 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             lower.contains("bed") || lower.contains("نوم")
         val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
 
+        val timeRange = parseTimeRange(lower, isArabic)
         val extractedHours = extractTimeHours(lower)
         val startHour = when {
+            timeRange != null -> timeRange.first
             extractedHours.isNotEmpty() -> extractedHours.first()
             isSleep -> 23
             isStudy -> 18
@@ -311,6 +355,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             else -> 20
         }
         val endHour = when {
+            timeRange != null -> timeRange.second
             extractedHours.size >= 2 -> extractedHours[1]
             isSleep -> 7
             else -> (startHour + 2) % 24
@@ -326,12 +371,11 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
 
         val soundMode = when {
             lower.contains("vibrate") || lower.contains("اهتزاز") -> SoundMode.VIBRATE
-            lower.contains("normal") || lower.contains("صوت") -> SoundMode.SOUND
+            lower.contains("sound") || lower.contains("عادي") || (lower.contains("صوت") && !lower.contains("صامت") && !lower.contains("بدون")) -> SoundMode.SOUND
             else -> SoundMode.SILENT
         }
 
-        val allowEmergency = lower.contains("emergency") || lower.contains("family") ||
-            lower.contains("طوارئ") || lower.contains("عائل") || isSleep
+        val allowEmergency = true
         val allowPriority = lower.contains("priority") || lower.contains("family") ||
             lower.contains("important") || lower.contains("أولوية") || lower.contains("عائل")
 
@@ -397,9 +441,9 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 minute = 0,
                 dayFilter = dayFilter,
                 summary = if (isArabic) {
-                    "يومياً الساعة ${TimeUtils.formatTime12h(startHour, 0, true)}"
+                    "يومياً من ${TimeUtils.formatTime12h(startHour, 0, true)} إلى ${TimeUtils.formatTime12h(endHour, 0, true)}"
                 } else {
-                    "${dayFilter.label} at ${TimeUtils.formatTime12h(startHour, 0)}"
+                    "Daily from ${TimeUtils.formatTime12h(startHour, 0)} to ${TimeUtils.formatTime12h(endHour, 0)}"
                 }
             )
         }
@@ -408,30 +452,17 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         val endTimeLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)
         val soundLabel = if (isArabic) soundMode.arabicName else soundMode.displayName
         val actionSummary = if (isArabic) {
-            "تفعيل $profileLabel ووضع الصوت المحاكى ($soundLabel)"
+            "تفعيل $profileLabel (وضع $soundLabel)"
         } else {
-            "Activate $profileLabel & simulated $soundLabel Mode"
+            "Activate $profileLabel & $soundLabel Mode"
         }
         val exceptionSummary = if (isArabic) {
-            when {
-                allowEmergency && allowPriority -> "جهات الطوارئ والأولوية"
-                allowEmergency -> "جهات الطوارئ"
-                allowPriority -> "جهات الأولوية"
-                else -> "لا يوجد"
-            }
+            "جهات الطوارئ مستثناة دائماً ولا يمكن حجبها"
         } else {
-            when {
-                allowEmergency && allowPriority -> "Emergency & Priority contacts"
-                allowEmergency -> "Emergency contacts"
-                allowPriority -> "Priority contacts"
-                else -> "None"
-            }
+            "Emergency contacts always allowed"
         }
 
-        val exceptions = buildList {
-            if (allowEmergency) add(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts"))
-            if (allowPriority) add(RuleException(ExceptionType.PRIORITY_CONTACTS, "Allow Priority contacts"))
-        }
+        val exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts"))
 
         val routine = SmartRoutine(
             id = "routine_ai_${UUID.randomUUID().toString().take(6)}",
@@ -442,7 +473,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             conditions = listOf(RuleCondition(ConditionType.AUTOMATION_ENABLED, "Enabled")),
             actions = listOf(
                 RuleAction(ActionType.ACTIVATE_PROFILE, profileId, "Activate $profileLabel"),
-                RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated ${soundMode.displayName} Mode")
+                RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated $soundLabel Mode")
             ),
             exceptions = exceptions,
             priority = 8,
@@ -473,8 +504,10 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         val baseProposal = buildRoutineProposal(original, lower, isArabic)
         if (existingDraft == null) return baseProposal
 
-        val isEvening = lower.contains("مساء") || lower.contains("pm") || lower.contains("evening") || lower.contains("م")
-        val isMorning = lower.contains("صباح") || lower.contains("am") || lower.contains("morning") || lower.contains("ص")
+        val timeRange = parseTimeRange(lower, isArabic)
+        if (timeRange != null) {
+            return baseProposal
+        }
 
         val existingDraftHours = extractTimeHours(existingDraft.scheduleStartTime + " " + existingDraft.scheduleEndTime)
         var startHour = existingDraftHours.firstOrNull() ?: existingDraft.trigger.hour
@@ -489,11 +522,6 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 endHour = (startHour + 3) % 24
             }
         }
-
-        if (isEvening && startHour < 12) startHour += 12
-        if (isEvening && endHour < 12 && endHour <= startHour) endHour += 12
-        if (isMorning && startHour == 12) startHour = 0
-        if (isMorning && endHour == 12) endHour = 0
 
         val startLabel = TimeUtils.formatTime12h(startHour, 0, isArabic)
         val endLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)

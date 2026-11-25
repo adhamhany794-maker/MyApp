@@ -592,4 +592,58 @@ class RoutineJsonValidatorTest {
         assertEquals("8:00 م", reply3.proposal!!.routine.scheduleStartTime)
         assertEquals("11:00 م", reply3.proposal!!.endTimeLabel)
     }
+
+    @Test
+    fun `arabic routine case A extracts start and end times correctly and proposes silent routine`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        val snapshot = baseSnapshot(AppLanguage.ARABIC)
+        val reply = engine.processPrompt("اعمل الفون صامت من 8 بليل ل10 الصبح", snapshot)
+        assertNotNull(reply.proposal)
+        assertEquals("8:00 م", reply.proposal!!.routine.scheduleStartTime)
+        assertEquals("10:00 ص", reply.proposal!!.endTimeLabel)
+        assertEquals(SoundMode.SILENT.name, reply.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+    }
+
+    @Test
+    fun `arabic routine case B handles multi-turn follow up with morning and evening correctly`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        var snapshot = baseSnapshot(AppLanguage.ARABIC)
+        val reply1 = engine.processPrompt("لا عاوزه صامت", snapshot)
+        assertNull(reply1.proposal)
+
+        val draft1 = com.example.models.SmartRoutine(
+            id = "draft_b",
+            name = "روتين",
+            description = "Draft B",
+            isEnabled = true,
+            trigger = com.example.models.RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 9, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
+            conditions = emptyList(),
+            actions = listOf(com.example.models.RuleAction(ActionType.SET_SOUND_MODE, SoundMode.SILENT.name, "Silent")),
+            exceptions = emptyList(),
+            priority = 5,
+            scheduleStartTime = "",
+            scheduleEndTime = "",
+            targetProfileId = "profile_study",
+            lastExecutionResult = "",
+            lastExecutedAtMillis = null,
+            executionCount = 0,
+            skippedCount = 0
+        )
+        snapshot = snapshot.copy(pendingRoutineDraft = draft1, clarificationTurnCount = 1)
+        val reply2 = engine.processPrompt("9صباحا ل10 مساء", snapshot)
+        assertNotNull(reply2.proposal)
+        assertEquals("9:00 ص", reply2.proposal!!.routine.scheduleStartTime)
+        assertEquals("10:00 م", reply2.proposal!!.endTimeLabel)
+        assertEquals(SoundMode.SILENT.name, reply2.proposal!!.routine.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }?.targetValue)
+    }
+
+    @Test
+    fun `arabic routine overnight range handles cross midnight schedule correctly`() = runTest {
+        val engine = com.example.assistant.LocalDemoAssistantEngine()
+        val snapshot = baseSnapshot(AppLanguage.ARABIC)
+        val reply = engine.processPrompt("من 11 بالليل ل 7 الصبح وضع صامت", snapshot)
+        assertNotNull(reply.proposal)
+        assertEquals("11:00 م", reply.proposal!!.routine.scheduleStartTime)
+        assertEquals("7:00 ص", reply.proposal!!.endTimeLabel)
+    }
 }
