@@ -213,6 +213,24 @@ class RoutinePhoneController(
     ): RoutineControlOutcome {
         val targetSoundMode = resolveTargetSoundMode(routine, profiles)
         val wantsDnd = routine.enableDoNotDisturb
+        if (targetSoundMode == null && !wantsDnd) {
+            return RoutineControlOutcome(
+                success = false,
+                permissionRequired = false,
+                logEntry = RoutineLogEntry(
+                    id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                    routineId = routine.id,
+                    routineName = routine.name,
+                    eventType = RoutineLogEventType.NO_ACTION,
+                    timestampMillis = timestampMillis,
+                    ringerMode = null,
+                    dndEnabled = null,
+                    interruptionFilter = null,
+                    note = "No phone action selected"
+                )
+            )
+        }
+
         val allowStarred = routine.exceptions.any {
             it.type == ExceptionType.EMERGENCY_CONTACTS || it.type == ExceptionType.PRIORITY_CONTACTS
         }
@@ -255,9 +273,14 @@ class RoutinePhoneController(
 
         var appliedRinger: SoundMode? = null
         var appliedDnd: Boolean? = null
+        var ringerOk = true
+        var dndOk = true
+        var permRequiredDuringApply = false
 
         if (targetSoundMode != null) {
             val res = phoneControlManager.applyRingerMode(targetSoundMode)
+            ringerOk = res.success
+            if (res.permissionRequired) permRequiredDuringApply = true
             if (res.success) {
                 appliedRinger = targetSoundMode
             }
@@ -267,9 +290,42 @@ class RoutinePhoneController(
                 enabled = true,
                 allowStarredContacts = allowStarred
             )
+            dndOk = dndRes.success
+            if (dndRes.permissionRequired) permRequiredDuringApply = true
             if (dndRes.success) {
                 appliedDnd = true
             }
+        }
+
+        val overallSuccess = (appliedRinger != null || appliedDnd == true) && ringerOk && dndOk
+        if (!overallSuccess) {
+            // Roll back empty backup entry if nothing succeeded
+            backupStore.onRoutineEnded(routine.id)
+            if (permRequiredDuringApply) {
+                backupStore.setDndPermissionMissing(true, routine.name)
+            }
+            val failNote = if (permRequiredDuringApply) {
+                if (isArabic) "تعذر التحكم بالهاتف: إذن الوصول لعدم الإزعاج غير ممنوح"
+                else "Failed: Do Not Disturb access not granted"
+            } else {
+                if (isArabic) "تعذر تطبيق تغيير الصوت أو عدم الإزعاج على الهاتف"
+                else "Failed to apply ringer mode or Do Not Disturb on device"
+            }
+            return RoutineControlOutcome(
+                success = false,
+                permissionRequired = permRequiredDuringApply,
+                logEntry = RoutineLogEntry(
+                    id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                    routineId = routine.id,
+                    routineName = routine.name,
+                    eventType = RoutineLogEventType.PERMISSION_DENIED,
+                    timestampMillis = timestampMillis,
+                    ringerMode = null,
+                    dndEnabled = null,
+                    interruptionFilter = null,
+                    note = failNote
+                )
+            )
         }
 
         val afterState = phoneControlManager.refreshPermissionAndDeviceState()

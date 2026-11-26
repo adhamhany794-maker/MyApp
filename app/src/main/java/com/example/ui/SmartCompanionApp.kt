@@ -35,6 +35,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,8 +50,10 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -321,7 +325,9 @@ fun SmartCompanionApp(
                         }
                     }
 
-                    if (!state.phoneControl.canScheduleExactAlarms || state.exactAlarmDeniedNotice) {
+                    if ((!state.phoneControl.canScheduleExactAlarms || state.exactAlarmDeniedNotice) &&
+                        (currentRoute == NavRoutes.ROUTINES || currentRoute == NavRoutes.ROUTINE_LOG)
+                    ) {
                         Surface(
                             color = StatusAmber.copy(alpha = 0.14f),
                             border = BorderStroke(1.dp, StatusAmber.copy(alpha = 0.5f)),
@@ -462,6 +468,91 @@ fun SmartCompanionApp(
                     strings = strings,
                     onSelectRoutine = { chosen -> viewModel.resolvePendingConflict(chosen) },
                     onKeepCurrent = { viewModel.resolvePendingConflict(null) }
+                )
+            }
+
+            state.savePermissionDialog?.let { permDialog ->
+                AlertDialog(
+                    onDismissRequest = {},
+                    properties = DialogProperties(
+                        dismissOnBackPress = false,
+                        dismissOnClickOutside = false
+                    ),
+                    modifier = Modifier.testTag("save_permission_blocking_dialog"),
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Rounded.NotificationsOff,
+                            contentDescription = strings.permissionDialogTitle,
+                            tint = StatusCrimson
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = if (permDialog.routineName.isNotBlank()) {
+                                "${strings.permissionDialogTitle} — ${permDialog.routineName}"
+                            } else {
+                                strings.permissionDialogTitle
+                            }
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (permDialog.realChangeFailed) {
+                                Text(
+                                    text = permDialog.failureNote?.takeIf { it.isNotBlank() }
+                                        ?: strings.permissionDialogRealFailedMsg,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = StatusCrimson
+                                )
+                            }
+                            if (permDialog.missingDndAccess || permDialog.permissionRequiredForRun) {
+                                Text(
+                                    text = strings.permissionDialogMissingDndMsg,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            if (permDialog.missingExactAlarm) {
+                                Text(
+                                    text = strings.permissionDialogMissingExactMsg,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            if (permDialog.missingDndAccess || permDialog.permissionRequiredForRun || permDialog.realChangeFailed) {
+                                Button(
+                                    onClick = {
+                                        val intent = viewModel.createDndAccessSettingsIntent(context)
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("dialog_open_dnd_settings_btn")
+                                ) {
+                                    Text(strings.openDndSettingsBtn)
+                                }
+                            }
+                            if (permDialog.missingExactAlarm) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val intent = viewModel.createExactAlarmSettingsIntent(context)
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("dialog_open_exact_alarm_settings_btn")
+                                ) {
+                                    Text(strings.openExactAlarmSettingsBtn)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { viewModel.dismissSavePermissionDialog() },
+                            modifier = Modifier.testTag("dialog_dismiss_permission_btn")
+                        ) {
+                            Text(strings.close)
+                        }
+                    }
                 )
             }
         }

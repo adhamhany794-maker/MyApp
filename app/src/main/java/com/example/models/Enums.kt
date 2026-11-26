@@ -147,6 +147,7 @@ enum class TimePeriodFilter(val label: String) {
 enum class RoutineLogEventType {
     STARTED,
     ENDED,
-    PERMISSION_DENIED
+    PERMISSION_DENIED,
+    NO_ACTION
 }
 

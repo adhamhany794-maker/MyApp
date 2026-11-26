@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.NotificationManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoMode
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.automation.RoutineAlarmCalculator
 import com.example.models.SmartRoutine
 import com.example.ui.components.ActiveStatusPill
 import com.example.ui.components.CompanionCard
@@ -388,6 +391,86 @@ fun RoutinesScreen(
                     Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(strings.screenRoutineLog)
+                }
+            }
+        }
+
+        // Temporary Debug Card for verifying real phone control & alarm scheduling
+        item {
+            val nowMillis = System.currentTimeMillis()
+            val upcomingAlarms = remember(state.routines, state.routineLogs.size) {
+                state.routines
+                    .flatMap { r ->
+                        RoutineAlarmCalculator.computeNextAlarms(r, nowMillis).map { ev -> r.name to ev }
+                    }
+                    .sortedBy { it.second.triggerAtMillis }
+                    .take(5)
+            }
+            val filterLabel = when (state.phoneControl.currentInterruptionFilter) {
+                NotificationManager.INTERRUPTION_FILTER_ALL -> "ALL (1)"
+                NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "PRIORITY (2)"
+                NotificationManager.INTERRUPTION_FILTER_NONE -> "NONE (3)"
+                NotificationManager.INTERRUPTION_FILTER_ALARMS -> "ALARMS (4)"
+                else -> "UNKNOWN (${state.phoneControl.currentInterruptionFilter})"
+            }
+            val lastLogNote = state.routineLogs.firstOrNull()?.note ?: strings.debugNoLogYet
+
+            CompanionCard(modifier = Modifier.testTag("routines_debug_card")) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.BugReport,
+                        contentDescription = strings.debugCardTitle,
+                        tint = StatusAmber,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = strings.debugCardTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "hasDndAccess: ${state.phoneControl.hasDndAccess} | canScheduleExactAlarms: ${state.phoneControl.canScheduleExactAlarms}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "ringerMode: ${state.phoneControl.currentRingerMode.name} | interruptionFilter: $filterLabel",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily)
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = if (upcomingAlarms.isEmpty()) {
+                        "nextAlarms: ${strings.debugNoNextAlarms}"
+                    } else {
+                        "nextAlarms:\n" + upcomingAlarms.joinToString("\n") { (rName, ev) ->
+                            val kind = if (ev.isStart) "START" else "END"
+                            "• $rName [$kind]: ${TimeUtils.formatTimestamp(ev.triggerAtMillis, strings.isArabic)}"
+                        }
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "lastLog: $lastLogNote",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Spacer(Modifier.height(10.dp))
+                FilledTonalButton(
+                    onClick = { viewModel.testSilentFor60Seconds() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("debug_test_silent_60s_button")
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.debugTestSilent60sBtn)
                 }
             }
         }

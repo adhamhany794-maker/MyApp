@@ -130,6 +130,11 @@ fun RoutineLogScreen(
                     StatusCrimson,
                     Icons.Rounded.WarningAmber
                 )
+                RoutineLogEventType.NO_ACTION -> Triple(
+                    strings.routineLogNoActionBadge,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icons.Rounded.WarningAmber
+                )
             }
 
             CompanionCard(modifier = Modifier.testTag("routine_log_item_${entry.id}")) {

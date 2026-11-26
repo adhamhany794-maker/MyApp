@@ -489,6 +489,17 @@ abstract class AppStrings {
     abstract val addTimeWindowBtn: String
     abstract val customDaysLabel: String
     abstract val removeWindowDesc: String
+    abstract val routineLogNoActionBadge: String
+    abstract val permissionDialogTitle: String
+    abstract val permissionDialogMissingDndMsg: String
+    abstract val permissionDialogMissingExactMsg: String
+    abstract val permissionDialogRealFailedMsg: String
+    abstract val openDndSettingsBtn: String
+    abstract val openExactAlarmSettingsBtn: String
+    abstract val debugCardTitle: String
+    abstract val debugTestSilent60sBtn: String
+    abstract val debugNoNextAlarms: String
+    abstract val debugNoLogYet: String
 
     fun priorityTierLabel(priority: Int): String = when {
         priority >= 8 -> priorityHighLabel
@@ -1149,6 +1160,17 @@ private object EnglishAppStrings : AppStrings() {
     override val addTimeWindowBtn = "Add time window"
     override val customDaysLabel = "Or choose specific days"
     override val removeWindowDesc = "Remove time window"
+    override val routineLogNoActionBadge = "No action"
+    override val permissionDialogTitle = "Permission required for real phone control"
+    override val permissionDialogMissingDndMsg = "Do Not Disturb access is not granted. Without it, routines cannot change your real phone sound mode or Do Not Disturb."
+    override val permissionDialogMissingExactMsg = "Exact alarm permission is not granted. Without it, scheduled routines will not trigger reliably on time."
+    override val permissionDialogRealFailedMsg = "Could not apply the routine to your real phone settings. Make sure Do Not Disturb access is granted and a phone action (Silent / Vibrate / Sound / DND) is selected."
+    override val openDndSettingsBtn = "Open Do Not Disturb Settings"
+    override val openExactAlarmSettingsBtn = "Open Exact Alarm Settings"
+    override val debugCardTitle = "Debug (Temporary)"
+    override val debugTestSilent60sBtn = "Test now (Silent 60s)"
+    override val debugNoNextAlarms = "No upcoming scheduled alarms"
+    override val debugNoLogYet = "No RoutineLogEntry recorded yet"
 }
 
 private object ArabicAppStrings : AppStrings() {
@@ -1578,4 +1600,15 @@ private object ArabicAppStrings : AppStrings() {
     override val addTimeWindowBtn = "إضافة فترة زمنية"
     override val customDaysLabel = "أو اختر أياماً محددة"
     override val removeWindowDesc = "حذف الفترة الزمنية"
+    override val routineLogNoActionBadge = "بدون إجراء"
+    override val permissionDialogTitle = "إذن مطلوب للتحكم الفعلي بالهاتف"
+    override val permissionDialogMissingDndMsg = "إذن الوصول إلى \"عدم الإزعاج\" غير ممنوح. بدونه لن يتمكن الروتين من تغيير وضع صوت الهاتف الحقيقي أو تفعيل عدم الإزعاج."
+    override val permissionDialogMissingExactMsg = "إذن المنبهات الدقيقة غير ممنوح. بدونه قد لا تعمل الروتينات المجدولة في وقتها المحدد."
+    override val permissionDialogRealFailedMsg = "تعذّر تطبيق التغيير الفعلي على الهاتف. تأكد من منح إذن عدم الإزعاج واختيار إجراء فعلي للهاتف (صامت / اهتزاز / صوت / عدم الإزعاج)."
+    override val openDndSettingsBtn = "فتح إعدادات عدم الإزعاج"
+    override val openExactAlarmSettingsBtn = "فتح إعدادات المنبهات الدقيقة"
+    override val debugCardTitle = "فحص مباشر (Debug)"
+    override val debugTestSilent60sBtn = "Test now — اختبار صامت 60 ثانية"
+    override val debugNoNextAlarms = "لا توجد منبهات مجدولة قادمة"
+    override val debugNoLogYet = "لا يوجد سجل تشغيل بعد"
 }

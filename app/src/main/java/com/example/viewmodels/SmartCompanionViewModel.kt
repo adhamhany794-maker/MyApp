@@ -78,6 +78,15 @@ data class DemoScenarioStepResult(
     val finalOutcome: String
 )
 
+data class SavePermissionDialogState(
+    val routineName: String,
+    val missingDndAccess: Boolean,
+    val missingExactAlarm: Boolean,
+    val realChangeFailed: Boolean = false,
+    val permissionRequiredForRun: Boolean = false,
+    val failureNote: String? = null
+)
+
 data class SmartCompanionUiState(
     val isReady: Boolean = false,
     val preferences: AppPreferences = AppPreferences(),
@@ -100,7 +109,8 @@ data class SmartCompanionUiState(
     val phoneControl: PhoneControlState = PhoneControlState(),
     val routineLogs: List<RoutineLogEntry> = emptyList(),
     val dndPermissionAlertRoutine: String? = null,
-    val exactAlarmDeniedNotice: Boolean = false
+    val exactAlarmDeniedNotice: Boolean = false,
+    val savePermissionDialog: SavePermissionDialogState? = null
 ) {
     val activeProfile: SmartProfile?
         get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
@@ -132,6 +142,7 @@ class SmartCompanionViewModel(
     private val _isReady = MutableStateFlow(false)
     private val _dndPermissionAlertRoutine = MutableStateFlow<String?>(null)
     private val _exactAlarmDeniedNotice = MutableStateFlow(false)
+    private val _savePermissionDialog = MutableStateFlow<SavePermissionDialogState?>(null)
 
     private var focusTimerJob: Job? = null
 
@@ -177,9 +188,10 @@ class SmartCompanionViewModel(
 
     private val alertDataFlow = combine(
         _dndPermissionAlertRoutine,
-        _exactAlarmDeniedNotice
-    ) { dndAlert, exactDenied ->
-        dndAlert to exactDenied
+        _exactAlarmDeniedNotice,
+        _savePermissionDialog
+    ) { dndAlert, exactDenied, saveDialog ->
+        AlertBundle(dndAlert, exactDenied, saveDialog)
     }
 
     val uiState: StateFlow<SmartCompanionUiState> = combine(
@@ -210,8 +222,9 @@ class SmartCompanionViewModel(
             feedbackBanner = inter.feedbackBanner,
             phoneControl = extra.phoneControl,
             routineLogs = extra.routineLogs,
-            dndPermissionAlertRoutine = alerts.first,
-            exactAlarmDeniedNotice = alerts.second
+            dndPermissionAlertRoutine = alerts.dndAlert,
+            exactAlarmDeniedNotice = alerts.exactDenied,
+            savePermissionDialog = alerts.saveDialog
         )
     }.stateIn(
         scope = viewModelScope,
@@ -254,6 +267,10 @@ class SmartCompanionViewModel(
     fun dismissDndPermissionAlert() {
         routineBackupStore.setDndPermissionMissing(false, null)
         _dndPermissionAlertRoutine.value = null
+    }
+
+    fun dismissSavePermissionDialog() {
+        _savePermissionDialog.value = null
     }
 
     fun clearRoutineLogs() {
@@ -557,6 +574,13 @@ class SmartCompanionViewModel(
     @JvmOverloads
     fun saveRoutine(routine: SmartRoutine, startImmediately: Boolean = false) {
         viewModelScope.launch {
+            val permStateBeforeSave = phoneControlManager.refreshPermissionAndDeviceState()
+            val missingDndBeforeSave = !permStateBeforeSave.hasDndAccess
+            val missingExactBeforeSave = !(permStateBeforeSave.canScheduleExactAlarms && alarmScheduler.canScheduleExactAlarms())
+            if (missingExactBeforeSave) {
+                _exactAlarmDeniedNotice.value = true
+            }
+
             repository.upsertRoutine(routine)
             _routineDraftFromAssistant.value = null
             repository.logEvent(
@@ -568,10 +592,18 @@ class SmartCompanionViewModel(
                 relatedRoutineName = routine.name
             )
             val allRoutines = repository.getAllRoutinesOnce()
-            val exactDenied = rescheduleRoutinesInternal(allRoutines)
+            val exactDenied = rescheduleRoutinesInternal(allRoutines) || missingExactBeforeSave
 
             if (startImmediately && routine.isEnabled) {
                 val state = uiState.value
+                // 1. Apply real phone control BEFORE the simulation banner
+                val realOutcome = applyRealPhoneControlForRoutine(
+                    routine = routine,
+                    profiles = state.profiles,
+                    scheduleEndAlarm = true,
+                    showMissingDndBanner = false
+                )
+
                 val routinesWithSaved = state.routines.filterNot { it.id == routine.id } + routine
                 val output = simulationEngine.evaluate(
                     event = SimulationEvent.ManualRoutine(routine.id),
@@ -584,12 +616,35 @@ class SmartCompanionViewModel(
                     conflictPolicy = state.preferences.conflictPolicy
                 )
                 _latestTrace.value = output.trace
-                applyEngineOutput(output)
-                applyRealPhoneControlForRoutine(routine, state.profiles, scheduleEndAlarm = true)
-            } else if (exactDenied) {
-                showBanner(
-                    if (isArabic()) "تعذّر جدولة المنبه الدقيق: يرجى السماح بإذن المنبهات الدقيقة من الإعدادات"
-                    else "Exact alarm permission denied — enable Alarms & reminders in Settings"
+                applyEngineOutput(output, showCompletionBanner = false)
+
+                if (realOutcome.success) {
+                    val activatedMsg = output.inAppNotice
+                        ?: if (isArabic()) "تم تفعيل '${routine.name}' على الهاتف" else "${routine.name} activated"
+                    showBanner(activatedMsg)
+                    if (exactDenied) {
+                        _savePermissionDialog.value = SavePermissionDialogState(
+                            routineName = routine.name,
+                            missingDndAccess = false,
+                            missingExactAlarm = true
+                        )
+                    }
+                } else {
+                    // Never show an "activated" message when real change failed; show persistent dialog
+                    _savePermissionDialog.value = SavePermissionDialogState(
+                        routineName = routine.name,
+                        missingDndAccess = realOutcome.permissionRequired || missingDndBeforeSave,
+                        missingExactAlarm = exactDenied,
+                        realChangeFailed = true,
+                        permissionRequiredForRun = realOutcome.permissionRequired,
+                        failureNote = realOutcome.logEntry.note
+                    )
+                }
+            } else if (missingDndBeforeSave || exactDenied) {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = routine.name,
+                    missingDndAccess = missingDndBeforeSave,
+                    missingExactAlarm = exactDenied
                 )
             } else {
                 showBanner(if (isArabic()) "تم حفظ الروتين '${routine.name}'" else "Saved routine '${routine.name}'")
@@ -600,8 +655,9 @@ class SmartCompanionViewModel(
     private suspend fun applyRealPhoneControlForRoutine(
         routine: SmartRoutine,
         profiles: List<com.example.models.SmartProfile>,
-        scheduleEndAlarm: Boolean
-    ) {
+        scheduleEndAlarm: Boolean,
+        showMissingDndBanner: Boolean = false
+    ): com.example.automation.RoutineControlOutcome {
         val now = System.currentTimeMillis()
         val ar = isArabic()
         val outcome = routinePhoneController.applyRoutineStart(
@@ -610,24 +666,119 @@ class SmartCompanionViewModel(
             isArabic = ar,
             timestampMillis = now
         )
-        repository.addRoutineLog(outcome.logEntry)
-
         if (outcome.permissionRequired) {
+            repository.addRoutineLog(outcome.logEntry)
             _dndPermissionAlertRoutine.value = routine.name
             onDndPermissionMissingNotification(routine.name, ar)
-            showBanner(
-                if (ar) "مطلوب إذن الوصول لعدم الإزعاج لتشغيل '${routine.name}'"
-                else "Do Not Disturb access is required to apply '${routine.name}'"
-            )
-            return
+            if (showMissingDndBanner) {
+                showBanner(
+                    if (ar) "مطلوب إذن الوصول لعدم الإزعاج لتشغيل '${routine.name}'"
+                    else "Do Not Disturb access is required to apply '${routine.name}'"
+                )
+            }
+            return outcome
         }
 
-        if (scheduleEndAlarm && RoutineAlarmCalculator.isTimeSchedulable(routine)) {
+        if (outcome.success && scheduleEndAlarm && RoutineAlarmCalculator.isTimeSchedulable(routine)) {
             val endAt = RoutineAlarmCalculator.computeImmediateEndTimeMillis(routine, now)
             val endRes = alarmScheduler.scheduleImmediateEndAlarm(routine, endAt)
             if (endRes.exactAlarmPermissionDenied) {
                 _exactAlarmDeniedNotice.value = true
             }
+        }
+        repository.addRoutineLog(outcome.logEntry)
+        return outcome
+    }
+
+    fun testSilentFor60Seconds() {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val endAt = now + 60_000L
+            val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+            val endCal = java.util.Calendar.getInstance().apply { timeInMillis = endAt }
+            val ar = isArabic()
+            val debugRoutine = SmartRoutine(
+                id = "routine_debug_silent_60s",
+                name = if (ar) "اختبار صامت 60 ثانية (Debug)" else "Debug Silent 60s",
+                description = if (ar) "اختبار مؤقت لتطبيق الصامت لمدة 60 ثانية ثم استعادة الوضع السابق"
+                else "Temporary test applying Silent for 60 seconds then restoring previous state",
+                isEnabled = true,
+                trigger = RuleTrigger(
+                    type = TriggerType.SPECIFIC_TIME,
+                    hour = cal.get(java.util.Calendar.HOUR_OF_DAY),
+                    minute = cal.get(java.util.Calendar.MINUTE),
+                    dayFilter = DayFilter.EVERY_DAY,
+                    summary = "Debug 60s"
+                ),
+                conditions = emptyList(),
+                actions = listOf(
+                    RuleAction(
+                        type = ActionType.SET_SOUND_MODE,
+                        targetValue = SoundMode.SILENT.name,
+                        label = if (ar) "صامت" else "Silent"
+                    )
+                ),
+                exceptions = emptyList(),
+                priority = 10,
+                scheduleStartTime = TimeUtils.formatTime12h(
+                    cal.get(java.util.Calendar.HOUR_OF_DAY),
+                    cal.get(java.util.Calendar.MINUTE),
+                    ar
+                ),
+                scheduleEndTime = TimeUtils.formatTime12h(
+                    endCal.get(java.util.Calendar.HOUR_OF_DAY),
+                    endCal.get(java.util.Calendar.MINUTE),
+                    ar
+                ),
+                targetProfileId = null,
+                lastExecutionResult = if (ar) "اختبار 60 ثانية" else "60s test",
+                lastExecutedAtMillis = now,
+                executionCount = 0,
+                skippedCount = 0,
+                enableDoNotDisturb = false,
+                isOneTime = true
+            )
+
+            repository.upsertRoutine(debugRoutine)
+            val outcome = routinePhoneController.applyRoutineStart(
+                routine = debugRoutine,
+                profiles = uiState.value.profiles,
+                isArabic = ar,
+                timestampMillis = now
+            )
+            repository.addRoutineLog(outcome.logEntry)
+
+            if (outcome.permissionRequired || !outcome.success) {
+                val missingExact = !(phoneControlManager.refreshPermissionAndDeviceState().canScheduleExactAlarms &&
+                    alarmScheduler.canScheduleExactAlarms())
+                if (outcome.permissionRequired) {
+                    _dndPermissionAlertRoutine.value = debugRoutine.name
+                    onDndPermissionMissingNotification(debugRoutine.name, ar)
+                }
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = debugRoutine.name,
+                    missingDndAccess = outcome.permissionRequired || !phoneControlManager.state.value.hasDndAccess,
+                    missingExactAlarm = missingExact,
+                    realChangeFailed = true,
+                    permissionRequiredForRun = outcome.permissionRequired,
+                    failureNote = outcome.logEntry.note
+                )
+                return@launch
+            }
+
+            val endRes = alarmScheduler.scheduleImmediateEndAlarm(debugRoutine, endAt)
+            if (endRes.exactAlarmPermissionDenied) {
+                _exactAlarmDeniedNotice.value = true
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = debugRoutine.name,
+                    missingDndAccess = false,
+                    missingExactAlarm = true
+                )
+            }
+            showBanner(
+                if (ar) "تم تطبيق الصامت الحقيقي لمدة 60 ثانية — ستتم الاستعادة تلقائياً"
+                else "Applied real Silent mode for 60 seconds — auto-restore scheduled"
+            )
         }
     }
 
@@ -723,6 +874,12 @@ class SmartCompanionViewModel(
     fun runRoutineManually(routine: SmartRoutine) {
         viewModelScope.launch {
             val state = uiState.value
+            val realOutcome = applyRealPhoneControlForRoutine(
+                routine = routine,
+                profiles = state.profiles,
+                scheduleEndAlarm = true,
+                showMissingDndBanner = false
+            )
             val output = simulationEngine.evaluate(
                 event = SimulationEvent.ManualRoutine(routine.id),
                 routines = state.routines,
@@ -734,12 +891,23 @@ class SmartCompanionViewModel(
                 conflictPolicy = state.preferences.conflictPolicy
             )
             _latestTrace.value = output.trace
-            applyEngineOutput(output)
-            if (output.selectedRoutine != null) {
-                applyRealPhoneControlForRoutine(
-                    routine = output.selectedRoutine,
-                    profiles = state.profiles,
-                    scheduleEndAlarm = true
+            applyEngineOutput(output, showCompletionBanner = false)
+
+            if (realOutcome.success) {
+                showBanner(
+                    output.inAppNotice
+                        ?: if (isArabic()) "تم تفعيل '${routine.name}' على الهاتف" else "${routine.name} activated"
+                )
+            } else {
+                val missingExact = !(phoneControlManager.refreshPermissionAndDeviceState().canScheduleExactAlarms &&
+                    alarmScheduler.canScheduleExactAlarms())
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = routine.name,
+                    missingDndAccess = realOutcome.permissionRequired || !phoneControlManager.state.value.hasDndAccess,
+                    missingExactAlarm = missingExact,
+                    realChangeFailed = true,
+                    permissionRequiredForRun = realOutcome.permissionRequired,
+                    failureNote = realOutcome.logEntry.note
                 )
             }
         }
@@ -823,7 +991,10 @@ class SmartCompanionViewModel(
         }
     }
 
-    private suspend fun applyEngineOutput(output: EngineEvaluationOutput) {
+    private suspend fun applyEngineOutput(
+        output: EngineEvaluationOutput,
+        showCompletionBanner: Boolean = true
+    ) {
         val state = uiState.value
         val routine = output.selectedRoutine
 
@@ -835,7 +1006,9 @@ class SmartCompanionViewModel(
                 result = output.trace.finalResult,
                 explanation = output.trace.conditionsEvaluated.joinToString("; ").ifEmpty { output.trace.finalResult }
             )
-            showBanner(output.trace.finalResult)
+            if (showCompletionBanner) {
+                showBanner(output.trace.finalResult)
+            }
             return
         }
 
@@ -891,7 +1064,9 @@ class SmartCompanionViewModel(
             relatedProfileName = targetProfile?.name
         )
 
-        showBanner(output.inAppNotice ?: "${routine.name} -> ${targetProfile?.name ?: ""} (${newSoundMode.displayName})")
+        if (showCompletionBanner) {
+            showBanner(output.inAppNotice ?: "${routine.name} -> ${targetProfile?.name ?: ""} (${newSoundMode.displayName})")
+        }
     }
 
     // --- Context Awareness ---
@@ -1782,6 +1957,12 @@ class SmartCompanionViewModel(
         val draftRoutine: SmartRoutine?,
         val phoneControl: PhoneControlState,
         val routineLogs: List<RoutineLogEntry>
+    )
+
+    private data class AlertBundle(
+        val dndAlert: String?,
+        val exactDenied: Boolean,
+        val saveDialog: SavePermissionDialogState?
     )
 
     class Factory(

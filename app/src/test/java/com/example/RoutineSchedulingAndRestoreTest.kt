@@ -1,6 +1,8 @@
 package com.example
 
+import android.Manifest
 import android.app.AlarmManager
+import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -53,6 +55,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlarmManager
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -455,7 +458,7 @@ class RoutineSchedulingAndRestoreTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val shadowAm = Shadows.shadowOf(am)
-        shadowAm.setCanScheduleExactAlarms(true)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
 
         val scheduler = AndroidRoutineAlarmScheduler(context)
         val now = utcCalendar(2026, Calendar.NOVEMBER, 27, 8, 0).timeInMillis
@@ -475,7 +478,7 @@ class RoutineSchedulingAndRestoreTest {
         assertTrue(remaining.isEmpty())
 
         // Simulate denied SCHEDULE_EXACT_ALARM permission
-        shadowAm.setCanScheduleExactAlarms(false)
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
         val deniedRes = scheduler.rescheduleAll(listOf(routine), nowMillis = now)
         assertTrue(deniedRes.exactAlarmPermissionDenied)
         assertEquals(0, deniedRes.scheduledCount)
@@ -596,8 +599,7 @@ class RoutineSchedulingAndRestoreTest {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val shadowNm = Shadows.shadowOf(nm)
-        val shadowAm = Shadows.shadowOf(context.getSystemService(Context.ALARM_SERVICE) as AlarmManager)
-        shadowAm.setCanScheduleExactAlarms(true)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
 
         // Start in SOUND + ALL filter with DND access granted
         shadowNm.setNotificationPolicyAccessGranted(true)
@@ -648,6 +650,8 @@ class RoutineSchedulingAndRestoreTest {
         assertTrue(logs.any { it.eventType == RoutineLogEventType.ENDED })
 
         // Now revoke DND access and fire START on another routine -> posts notification + PERMISSION_DENIED log
+        Shadows.shadowOf(context.applicationContext as Application)
+            .grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         shadowNm.setNotificationPolicyAccessGranted(false)
         val blockedRoutine = buildRoutine(
             id = "r_receiver_blocked",
@@ -666,5 +670,119 @@ class RoutineSchedulingAndRestoreTest {
         )
         assertTrue(backupStore.isDndPermissionMissing())
         assertTrue(shadowNm.allNotifications.isNotEmpty())
+    }
+
+    @Test
+    fun `applyRoutineStart returns success false with No phone action selected and does not log STARTED when no ringer mode or DND is selected`() {
+        val gateway = FakePhoneControlGateway(
+            granted = true,
+            ringerMode = SoundMode.SOUND,
+            interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL
+        )
+        val manager = PhoneControlManager(gateway)
+        val backupStore = InMemoryRoutineStateBackupStore()
+        val controller = RoutinePhoneController(manager, backupStore)
+
+        val routineWithoutPhoneAction = buildRoutine(
+            id = "r_no_phone_action",
+            name = "إشعار فقط",
+            enableDoNotDisturb = false
+        ).copy(
+            actions = listOf(
+                RuleAction(ActionType.SHOW_NOTIFICATION, "ping", "عرض إشعار")
+            ),
+            targetProfileId = null
+        )
+
+        val outcome = controller.applyRoutineStart(
+            routine = routineWithoutPhoneAction,
+            profiles = emptyList(),
+            isArabic = true,
+            timestampMillis = 9_000_000L
+        )
+
+        assertFalse(outcome.success)
+        assertFalse(outcome.permissionRequired)
+        assertEquals("No phone action selected", outcome.logEntry.note)
+        assertFalse(outcome.logEntry.eventType == RoutineLogEventType.STARTED)
+        assertEquals(RoutineLogEventType.NO_ACTION, outcome.logEntry.eventType)
+        assertTrue(gateway.actionLog.isEmpty())
+        assertNull(backupStore.getBackup())
+    }
+
+    @Test
+    fun `ViewModel saveRoutine never shows activated banner on real control failure and shows blocking permission dialog while still saving`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val prefs = PreferencesManager(context)
+            prefs.setLanguage(AppLanguage.ARABIC)
+            val repository = SmartCompanionRepository(db, prefs)
+
+            val fakeGateway = FakePhoneControlGateway(
+                granted = false,
+                ringerMode = SoundMode.SOUND,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL,
+                exactAlarmsAllowed = false
+            )
+            val phoneControlManager = PhoneControlManager(fakeGateway)
+            val backupStore = InMemoryRoutineStateBackupStore()
+            val fakeScheduler = NoOpRoutineAlarmScheduler().apply { exactAlarmAllowed = false }
+
+            val viewModel = SmartCompanionViewModel(
+                repository = repository,
+                phoneControlManager = phoneControlManager,
+                routineBackupStore = backupStore,
+                alarmScheduler = fakeScheduler
+            )
+            val job = launch(Dispatchers.Unconfined) { viewModel.uiState.collect {} }
+
+            try {
+                var wait = 0
+                while (!viewModel.uiState.value.isReady && wait < 80) {
+                    Shadows.shadowOf(Looper.getMainLooper()).idle()
+                    delay(40)
+                    wait++
+                }
+                assertTrue(viewModel.uiState.value.isReady)
+
+                val routine = buildRoutine(
+                    id = "r_fail_dialog",
+                    name = "روتين بدون صلاحية",
+                    soundMode = SoundMode.SILENT,
+                    enableDoNotDisturb = true
+                )
+                viewModel.saveRoutine(routine, startImmediately = true)
+
+                wait = 0
+                while (wait < 80 && viewModel.uiState.value.savePermissionDialog == null) {
+                    Shadows.shadowOf(Looper.getMainLooper()).idle()
+                    delay(40)
+                    wait++
+                }
+
+                // Routine must still be saved
+                val saved = repository.getRoutineById("r_fail_dialog")
+                assertNotNull(saved)
+
+                // Blocking dialog shown with both missing permissions + real failure flag
+                val dialog = viewModel.uiState.value.savePermissionDialog
+                assertNotNull(dialog)
+                assertTrue(dialog!!.missingDndAccess)
+                assertTrue(dialog.missingExactAlarm)
+                assertTrue(dialog.realChangeFailed)
+
+                // Must NEVER show an "activated" feedback banner when real phone change failed
+                val banner = viewModel.uiState.value.feedbackBanner ?: ""
+                assertFalse("Activated banner must not appear when real change failed: $banner", banner.contains("activated", ignoreCase = true))
+                assertFalse("Arabic activated banner must not appear when real change failed: $banner", banner.contains("تم تفعيل"))
+            } finally {
+                job.cancel()
+            }
+        } finally {
+            db.close()
+        }
     }
 }
