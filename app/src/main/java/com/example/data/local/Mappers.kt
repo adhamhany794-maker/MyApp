@@ -13,6 +13,8 @@ import com.example.models.NotificationCategory
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
 import com.example.models.ProfileIconKey
+import com.example.models.RoutineLogEntry
+import com.example.models.RoutineLogEventType
 import com.example.models.RuleAction
 import com.example.models.RuleCondition
 import com.example.models.RuleException
@@ -23,6 +25,7 @@ import com.example.models.SmartProfile
 import com.example.models.SmartRoutine
 import com.example.models.SoundMode
 import com.example.models.TimePeriodFilter
+import com.example.models.TimeWindow
 import com.example.models.TriggerType
 import org.json.JSONArray
 import org.json.JSONObject
@@ -69,6 +72,7 @@ object EntityMappers {
     }
 
     fun RoutineEntity.toDomain(): SmartRoutine {
+        val extras = parseTriggerExtras(triggerJson)
         return SmartRoutine(
             id = id,
             name = name,
@@ -85,7 +89,12 @@ object EntityMappers {
             lastExecutionResult = lastExecutionResult,
             lastExecutedAtMillis = lastExecutedAtMillis,
             executionCount = executionCount,
-            skippedCount = skippedCount
+            skippedCount = skippedCount,
+            enableDoNotDisturb = extras.enableDoNotDisturb,
+            isOneTime = extras.isOneTime,
+            skipDates = extras.skipDates,
+            extraTimeWindows = extras.extraTimeWindows,
+            customDays = extras.customDays
         )
     }
 
@@ -99,6 +108,20 @@ object EntityMappers {
             put("location", trigger.location.name)
             put("activity", trigger.activity.name)
             put("summary", trigger.summary)
+            put("enableDoNotDisturb", enableDoNotDisturb)
+            put("isOneTime", isOneTime)
+            put("skipDates", JSONArray().apply { skipDates.forEach { put(it) } })
+            put("extraTimeWindows", JSONArray().apply {
+                extraTimeWindows.forEach { w ->
+                    put(JSONObject().apply {
+                        put("startHour", w.startHour)
+                        put("startMinute", w.startMinute)
+                        put("endHour", w.endHour)
+                        put("endMinute", w.endMinute)
+                    })
+                }
+            })
+            put("customDays", JSONArray().apply { customDays.forEach { put(it.name) } })
         }
         val condArray = JSONArray().apply {
             conditions.forEach { c ->
@@ -261,6 +284,35 @@ object EntityMappers {
         )
     }
 
+    fun RoutineLogEntity.toDomain(): RoutineLogEntry {
+        return RoutineLogEntry(
+            id = id,
+            routineId = routineId,
+            routineName = routineName,
+            eventType = runCatching { RoutineLogEventType.valueOf(eventType) }
+                .getOrDefault(RoutineLogEventType.STARTED),
+            timestampMillis = timestampMillis,
+            ringerMode = ringerMode?.let { runCatching { SoundMode.valueOf(it) }.getOrNull() },
+            dndEnabled = dndEnabled,
+            interruptionFilter = interruptionFilter,
+            note = note
+        )
+    }
+
+    fun RoutineLogEntry.toEntity(): RoutineLogEntity {
+        return RoutineLogEntity(
+            id = id,
+            routineId = routineId,
+            routineName = routineName,
+            eventType = eventType.name,
+            timestampMillis = timestampMillis,
+            ringerMode = ringerMode?.name,
+            dndEnabled = dndEnabled,
+            interruptionFilter = interruptionFilter,
+            note = note
+        )
+    }
+
     private fun parseStringList(json: String): List<String> {
         return runCatching {
             val arr = JSONArray(json)
@@ -315,6 +367,55 @@ object EntityMappers {
                 )
             }
         }.getOrDefault(emptyList())
+    }
+
+    private data class TriggerExtras(
+        val enableDoNotDisturb: Boolean = false,
+        val isOneTime: Boolean = false,
+        val skipDates: List<String> = emptyList(),
+        val extraTimeWindows: List<TimeWindow> = emptyList(),
+        val customDays: Set<DayFilter> = emptySet()
+    )
+
+    private fun parseTriggerExtras(json: String): TriggerExtras {
+        return runCatching {
+            val obj = JSONObject(json)
+            val skipArr = obj.optJSONArray("skipDates")
+            val skipDates = if (skipArr != null) {
+                List(skipArr.length()) { idx -> skipArr.optString(idx, "") }.filter { it.isNotBlank() }
+            } else {
+                emptyList()
+            }
+            val winArr = obj.optJSONArray("extraTimeWindows")
+            val windows = if (winArr != null) {
+                List(winArr.length()) { idx ->
+                    val w = winArr.getJSONObject(idx)
+                    TimeWindow(
+                        startHour = w.optInt("startHour", 18),
+                        startMinute = w.optInt("startMinute", 0),
+                        endHour = w.optInt("endHour", 19),
+                        endMinute = w.optInt("endMinute", 0)
+                    )
+                }
+            } else {
+                emptyList()
+            }
+            val daysArr = obj.optJSONArray("customDays")
+            val days = if (daysArr != null) {
+                List(daysArr.length()) { idx ->
+                    runCatching { DayFilter.valueOf(daysArr.getString(idx)) }.getOrNull()
+                }.filterNotNull().toSet()
+            } else {
+                emptySet()
+            }
+            TriggerExtras(
+                enableDoNotDisturb = obj.optBoolean("enableDoNotDisturb", false),
+                isOneTime = obj.optBoolean("isOneTime", false),
+                skipDates = skipDates,
+                extraTimeWindows = windows,
+                customDays = days
+            )
+        }.getOrDefault(TriggerExtras())
     }
 
     private fun parseExceptions(json: String): List<RuleException> {

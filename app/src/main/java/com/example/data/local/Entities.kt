@@ -88,3 +88,17 @@ data class NotificationStatEntity(
     val peakHourRange: String,
     val timePeriod: String
 )
+
+@Entity(tableName = "routine_logs")
+data class RoutineLogEntity(
+    @PrimaryKey val id: String,
+    val routineId: String,
+    val routineName: String,
+    val eventType: String,
+    val timestampMillis: Long,
+    val ringerMode: String?,
+    val dndEnabled: Boolean?,
+    val interruptionFilter: Int?,
+    val note: String
+)
+

@@ -1,10 +1,13 @@
 package com.example.simulation
 
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import com.example.models.SoundMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +18,9 @@ data class PhoneControlState(
     val hasDndAccess: Boolean = false,
     val currentRingerMode: SoundMode = SoundMode.SOUND,
     val isDndEnabled: Boolean = false,
+    val currentInterruptionFilter: Int = NotificationManager.INTERRUPTION_FILTER_ALL,
     val starredContactsAllowedInDnd: Boolean = false,
+    val canScheduleExactAlarms: Boolean = true,
     val lastError: String? = null
 )
 
@@ -33,6 +38,30 @@ interface PhoneControlGateway {
     fun isStarredContactsAllowedInDnd(): Boolean
     fun setDoNotDisturb(enabled: Boolean, allowStarredContacts: Boolean): Boolean
     fun createDndAccessSettingsIntent(context: Context): Intent
+
+    fun getCurrentInterruptionFilter(): Int =
+        if (isDndEnabled()) NotificationManager.INTERRUPTION_FILTER_PRIORITY
+        else NotificationManager.INTERRUPTION_FILTER_ALL
+
+    fun setInterruptionFilter(filter: Int): Boolean =
+        setDoNotDisturb(
+            enabled = filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+                filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN,
+            allowStarredContacts = filter == NotificationManager.INTERRUPTION_FILTER_PRIORITY
+        )
+
+    fun canScheduleExactAlarms(): Boolean = true
+
+    fun createExactAlarmSettingsIntent(context: Context): Intent {
+        val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
+        } else {
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+        }
+        return Intent(action, Uri.parse("package:${context.packageName}")).apply {
+            if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
 }
 
 class NoOpPhoneControlGateway : PhoneControlGateway {
@@ -55,6 +84,9 @@ class AndroidPhoneControlGateway(
 
     private val audioManager: AudioManager?
         get() = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
+    private val alarmManager: AlarmManager?
+        get() = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
 
     override fun isNotificationPolicyAccessGranted(): Boolean {
         return notificationManager?.isNotificationPolicyAccessGranted == true
@@ -86,10 +118,30 @@ class AndroidPhoneControlGateway(
     }
 
     override fun isDndEnabled(): Boolean {
-        val filter = notificationManager?.currentInterruptionFilter
-            ?: NotificationManager.INTERRUPTION_FILTER_ALL
+        val filter = getCurrentInterruptionFilter()
         return filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
             filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+    }
+
+    override fun getCurrentInterruptionFilter(): Int {
+        return notificationManager?.currentInterruptionFilter
+            ?: NotificationManager.INTERRUPTION_FILTER_ALL
+    }
+
+    override fun setInterruptionFilter(filter: Int): Boolean {
+        val nm = notificationManager ?: return false
+        if (!nm.isNotificationPolicyAccessGranted) return false
+        val safeFilter = if (filter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN) {
+            NotificationManager.INTERRUPTION_FILTER_ALL
+        } else {
+            filter
+        }
+        return try {
+            nm.setInterruptionFilter(safeFilter)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     override fun isStarredContactsAllowedInDnd(): Boolean {
@@ -132,6 +184,27 @@ class AndroidPhoneControlGateway(
 
     override fun createDndAccessSettingsIntent(context: Context): Intent {
         return Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+            if (context !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
+    override fun canScheduleExactAlarms(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager?.canScheduleExactAlarms() == true
+        } else {
+            true
+        }
+    }
+
+    override fun createExactAlarmSettingsIntent(context: Context): Intent {
+        val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
+        } else {
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+        }
+        return Intent(action, Uri.parse("package:${context.packageName}")).apply {
             if (context !is Activity) {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -199,8 +272,72 @@ class PhoneControlManager(
         )
     }
 
+    fun setDoNotDisturbEnabled(
+        enabled: Boolean,
+        allowStarredContacts: Boolean = true
+    ): PhoneControlActionResult {
+        if (!gateway.isNotificationPolicyAccessGranted()) {
+            val refreshed = readSnapshot(lastError = "DND_ACCESS_REQUIRED")
+            _state.value = refreshed
+            return PhoneControlActionResult(
+                success = false,
+                permissionRequired = true,
+                state = refreshed
+            )
+        }
+        val applied = gateway.setDoNotDisturb(
+            enabled = enabled,
+            allowStarredContacts = allowStarredContacts
+        )
+        val refreshed = readSnapshot(
+            lastError = if (applied) null else "DND_TOGGLE_FAILED"
+        )
+        _state.value = refreshed
+        return PhoneControlActionResult(
+            success = applied,
+            permissionRequired = !gateway.isNotificationPolicyAccessGranted(),
+            state = refreshed
+        )
+    }
+
+    fun restoreDeviceState(
+        ringerMode: SoundMode,
+        interruptionFilter: Int
+    ): PhoneControlActionResult {
+        if (!gateway.isNotificationPolicyAccessGranted()) {
+            val refreshed = readSnapshot(lastError = "DND_ACCESS_REQUIRED")
+            _state.value = refreshed
+            return PhoneControlActionResult(
+                success = false,
+                permissionRequired = true,
+                state = refreshed
+            )
+        }
+        // Restore interruption filter first so AudioManager accepts normal ringer mode if DND was active
+        val filterRestored = gateway.setInterruptionFilter(interruptionFilter)
+        val ringerRestored = gateway.setRingerMode(ringerMode)
+        val success = filterRestored && ringerRestored
+        val refreshed = readSnapshot(
+            lastError = if (success) null else "RESTORE_STATE_FAILED"
+        )
+        _state.value = refreshed
+        return PhoneControlActionResult(
+            success = success,
+            permissionRequired = !gateway.isNotificationPolicyAccessGranted(),
+            state = refreshed
+        )
+    }
+
+    fun currentInterruptionFilter(): Int = gateway.getCurrentInterruptionFilter()
+
+    fun currentRingerMode(): SoundMode = gateway.getCurrentRingerMode()
+
     fun createDndAccessSettingsIntent(context: Context): Intent {
         return gateway.createDndAccessSettingsIntent(context)
+    }
+
+    fun createExactAlarmSettingsIntent(context: Context): Intent {
+        return gateway.createExactAlarmSettingsIntent(context)
     }
 
     private fun readSnapshot(lastError: String?): PhoneControlState {
@@ -209,7 +346,13 @@ class PhoneControlManager(
             hasDndAccess = granted,
             currentRingerMode = gateway.getCurrentRingerMode(),
             isDndEnabled = if (granted) gateway.isDndEnabled() else false,
+            currentInterruptionFilter = if (granted) {
+                gateway.getCurrentInterruptionFilter()
+            } else {
+                NotificationManager.INTERRUPTION_FILTER_ALL
+            },
             starredContactsAllowedInDnd = if (granted) gateway.isStarredContactsAllowedInDnd() else false,
+            canScheduleExactAlarms = gateway.canScheduleExactAlarms(),
             lastError = lastError
         )
     }

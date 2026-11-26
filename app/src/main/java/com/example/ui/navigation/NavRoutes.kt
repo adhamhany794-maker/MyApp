@@ -17,6 +17,7 @@ object NavRoutes {
     const val FOCUS = "focus"
     const val SIMULATION = "simulation"
     const val RULE_BUILDER = "rule_builder"
+    const val ROUTINE_LOG = "routine_log"
 
     fun ruleBuilderRoute(routineId: String? = null): String {
         return if (routineId.isNullOrBlank()) RULE_BUILDER else "$RULE_BUILDER?routineId=$routineId"

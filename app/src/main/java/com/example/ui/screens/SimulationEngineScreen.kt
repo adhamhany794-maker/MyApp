@@ -23,8 +23,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import android.text.format.DateFormat
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import com.example.models.SimulatedActivity
 import com.example.models.SimulatedLocation
 import com.example.simulation.SimulationEvent
 import com.example.ui.components.CompanionCard
+import com.example.ui.components.ExactTimeEntrySection
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.components.SimulatedDemoBadge
@@ -52,10 +54,10 @@ import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
+import com.example.utils.RoutineTimeInputValidator
 import com.example.utils.TimeUtils
 import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -65,7 +67,11 @@ fun SimulationEngineScreen(
     viewModel: SmartCompanionViewModel,
     showHeader: Boolean = true
 ) {
+    val context = LocalContext.current
+    val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
     var simHour by remember { mutableIntStateOf(state.preferences.simulatedContext.simulatedHour) }
+    var simMinute by remember { mutableIntStateOf(state.preferences.simulatedContext.simulatedMinute) }
+    var simTimeError by remember { mutableStateOf<String?>(null) }
     var simDay by remember { mutableStateOf(state.preferences.simulatedContext.simulatedDay) }
     var simLocation by remember { mutableStateOf(state.preferences.simulatedContext.location) }
     var simActivity by remember { mutableStateOf(state.preferences.simulatedContext.activity) }
@@ -95,15 +101,26 @@ fun SimulationEngineScreen(
                 Text(strings.simClockTitle, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "${strings.dayFilterLabel(simDay)} • ${TimeUtils.formatTime12h(simHour, 0, strings.isArabic)}",
+                    text = "${strings.dayFilterLabel(simDay)} • ${
+                        RoutineTimeInputValidator.formatTimeForSetting(simHour, simMinute, is24Hour, strings.isArabic)
+                    }",
                     style = MaterialTheme.typography.titleLarge.copy(fontFamily = JetBrainsMonoFamily),
                     color = MaterialTheme.colorScheme.primary
                 )
-                Slider(
-                    value = simHour.toFloat(),
-                    onValueChange = { simHour = it.roundToInt().coerceIn(0, 23) },
-                    valueRange = 0f..23f
+                Spacer(Modifier.height(8.dp))
+                ExactTimeEntrySection(
+                    label = strings.simClockTitle,
+                    hour24 = simHour,
+                    minute = simMinute,
+                    strings = strings,
+                    testTagPrefix = "sim_time",
+                    onTimeChanged = { h, m ->
+                        simHour = h
+                        simMinute = m
+                    },
+                    onValidationErrorChanged = { simTimeError = it }
                 )
+                Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(
                         DayFilter.MONDAY, DayFilter.WEDNESDAY, DayFilter.FRIDAY,
@@ -121,21 +138,22 @@ fun SimulationEngineScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    OutlinedButton(onClick = { simHour = 9; simDay = DayFilter.MONDAY }) {
+                    OutlinedButton(onClick = { simHour = 9; simMinute = 0; simDay = DayFilter.MONDAY; simTimeError = null }) {
                         Text(if (strings.isArabic) "9 ص عمل" else "9 AM Work")
                     }
-                    OutlinedButton(onClick = { simHour = 18; simDay = DayFilter.WEDNESDAY }) {
+                    OutlinedButton(onClick = { simHour = 18; simMinute = 0; simDay = DayFilter.WEDNESDAY; simTimeError = null }) {
                         Text(if (strings.isArabic) "6 م تعارض" else "6 PM Conflict")
                     }
-                    OutlinedButton(onClick = { simHour = 23; simDay = DayFilter.FRIDAY }) {
+                    OutlinedButton(onClick = { simHour = 23; simMinute = 0; simDay = DayFilter.FRIDAY; simTimeError = null }) {
                         Text(if (strings.isArabic) "11 م نوم" else "11 PM Sleep")
                     }
                 }
                 Spacer(Modifier.height(10.dp))
                 Button(
+                    enabled = simTimeError == null,
                     onClick = {
-                        viewModel.updateSimulatedContext(hour = simHour, minute = 0, day = simDay)
-                        viewModel.runSimulationEvent(SimulationEvent.TimeAndDay(simHour, 0, simDay))
+                        viewModel.updateSimulatedContext(hour = simHour, minute = simMinute, day = simDay)
+                        viewModel.runSimulationEvent(SimulationEvent.TimeAndDay(simHour, simMinute, simDay))
                     },
                     modifier = Modifier
                         .fillMaxWidth()

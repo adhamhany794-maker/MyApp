@@ -57,9 +57,12 @@ import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
+import com.example.utils.RoutineTimeInputValidator
 import com.example.utils.TimeUtils
 import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -68,7 +71,7 @@ fun FocusSessionsScreen(
     strings: AppStrings,
     viewModel: SmartCompanionViewModel
 ) {
-    var selectedMinutes by remember { mutableIntStateOf(25) }
+    var selectedMinutes by remember { mutableIntStateOf(30) }
     var customMinutesText by remember { mutableStateOf("30") }
     var useCustom by remember { mutableStateOf(false) }
     var selectedProfile by remember(state.profiles) {
@@ -78,8 +81,13 @@ fun FocusSessionsScreen(
     var showHelp by remember { mutableStateOf(false) }
 
     val focus = state.activeFocus
+    val durationValidation = if (useCustom) {
+        RoutineTimeInputValidator.validateDurationMinutes(customMinutesText, strings.isArabic)
+    } else {
+        null
+    }
     val plannedIdleMinutes = if (useCustom) {
-        (customMinutesText.toIntOrNull() ?: 30).coerceIn(5, 240)
+        durationValidation?.minutes ?: selectedMinutes
     } else {
         selectedMinutes
     }
@@ -183,7 +191,8 @@ fun FocusSessionsScreen(
                                     viewModel.resetFocusSession()
                                 } else {
                                     useCustom = false
-                                    selectedMinutes = 25
+                                    selectedMinutes = 30
+                                    customMinutesText = "30"
                                 }
                             },
                             modifier = Modifier
@@ -199,6 +208,7 @@ fun FocusSessionsScreen(
 
                         // Play / Start Primary Orange Circle Button
                         Button(
+                            enabled = focus.isActive || durationValidation?.errorMessage == null,
                             onClick = {
                                 if (!focus.isActive) {
                                     selectedProfile?.let {
@@ -369,10 +379,14 @@ fun FocusSessionsScreen(
                     Spacer(Modifier.height(10.dp))
                     Text(strings.durationLabel, style = MaterialTheme.typography.labelMedium)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(25, 45, 60).forEach { mins ->
+                        RoutineTimeInputValidator.QUICK_DURATION_OPTIONS.forEach { mins ->
                             FilterChip(
                                 selected = !useCustom && selectedMinutes == mins,
-                                onClick = { useCustom = false; selectedMinutes = mins },
+                                onClick = {
+                                    useCustom = false
+                                    selectedMinutes = mins
+                                    customMinutesText = mins.toString()
+                                },
                                 label = { Text(TimeUtils.formatDurationMinutes(mins, strings.isArabic)) },
                                 modifier = Modifier.testTag("focus_dur_$mins")
                             )
@@ -380,18 +394,33 @@ fun FocusSessionsScreen(
                         FilterChip(
                             selected = useCustom,
                             onClick = { useCustom = true },
-                            label = { Text(strings.customLabel) }
+                            label = { Text(strings.customLabel) },
+                            modifier = Modifier.testTag("focus_dur_custom")
                         )
                     }
                     if (useCustom) {
                         Spacer(Modifier.height(6.dp))
                         OutlinedTextField(
                             value = customMinutesText,
-                            onValueChange = { customMinutesText = it.filter { ch -> ch.isDigit() } },
-                            label = { Text(strings.customMinutesLabel) },
+                            onValueChange = { customMinutesText = it.filter { ch -> ch.isDigit() }.take(4) },
+                            label = { Text(strings.customDurationMinutesLabel) },
+                            suffix = { Text(strings.minutesUnitLabel) },
+                            isError = durationValidation?.errorMessage != null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("focus_custom_minutes_input")
                         )
+                        durationValidation?.errorMessage?.let { err ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = err,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.testTag("focus_duration_error")
+                            )
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     Text(strings.focusProfileLabel, style = MaterialTheme.typography.labelMedium)

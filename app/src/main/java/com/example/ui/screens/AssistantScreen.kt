@@ -55,9 +55,12 @@ import com.example.ui.components.CompanionCard
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.FeatureInfoButton
 import com.example.ui.components.SimulatedDemoBadge
+import android.text.format.DateFormat
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.StatusAmber
 import com.example.utils.AppStrings
+import com.example.utils.RoutineTimeInputValidator
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
 import com.example.viewmodels.SmartCompanionUiState
@@ -221,12 +224,14 @@ fun AssistantScreen(
                                             color = MaterialTheme.colorScheme.secondary
                                         )
                                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                        val whenText = if (proposal.routine.scheduleStartTime.isNotBlank() && proposal.routine.scheduleEndTime.isNotBlank()) {
-                                            if (strings.isArabic) "من ${proposal.routine.scheduleStartTime} إلى ${proposal.routine.scheduleEndTime}"
-                                            else "From ${proposal.routine.scheduleStartTime} to ${proposal.routine.scheduleEndTime}"
-                                        } else {
-                                            proposal.triggerSummary
-                                        }
+                                        val cardContext = LocalContext.current
+                                        val is24h = remember(cardContext) { DateFormat.is24HourFormat(cardContext) }
+                                        val formattedRange = RoutineTimeInputValidator.formatRoutineRange(
+                                            routine = proposal.routine,
+                                            isArabic = strings.isArabic,
+                                            is24Hour = is24h
+                                        )
+                                        val whenText = formattedRange ?: proposal.triggerSummary
                                         Text(
                                             text = "${if (strings.isArabic) "متى" else "WHEN"}: $whenText",
                                             style = MaterialTheme.typography.bodySmall

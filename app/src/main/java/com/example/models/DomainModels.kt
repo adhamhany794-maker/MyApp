@@ -42,6 +42,13 @@ data class RuleException(
     val value: String
 )
 
+data class TimeWindow(
+    val startHour: Int,
+    val startMinute: Int,
+    val endHour: Int,
+    val endMinute: Int
+)
+
 data class SmartRoutine(
     val id: String,
     val name: String,
@@ -58,7 +65,24 @@ data class SmartRoutine(
     val lastExecutionResult: String,
     val lastExecutedAtMillis: Long?,
     val executionCount: Int,
-    val skippedCount: Int
+    val skippedCount: Int,
+    val enableDoNotDisturb: Boolean = false,
+    val isOneTime: Boolean = false,
+    val skipDates: List<String> = emptyList(),
+    val extraTimeWindows: List<TimeWindow> = emptyList(),
+    val customDays: Set<DayFilter> = emptySet()
+)
+
+data class RoutineLogEntry(
+    val id: String,
+    val routineId: String,
+    val routineName: String,
+    val eventType: RoutineLogEventType,
+    val timestampMillis: Long,
+    val ringerMode: SoundMode?,
+    val dndEnabled: Boolean?,
+    val interruptionFilter: Int?,
+    val note: String
 )
 
 data class PriorityContact(

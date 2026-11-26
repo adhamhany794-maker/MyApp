@@ -10,6 +10,12 @@ import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
 import com.example.assistant.RoutineTimeParser
+import com.example.automation.InMemoryRoutineStateBackupStore
+import com.example.automation.NoOpRoutineAlarmScheduler
+import com.example.automation.RoutineAlarmCalculator
+import com.example.automation.RoutineAlarmSchedulerGateway
+import com.example.automation.RoutinePhoneController
+import com.example.automation.RoutineStateBackupStore
 import com.example.data.AppPreferences
 import com.example.models.ActionType
 import com.example.models.ActiveFocusSession
@@ -25,6 +31,7 @@ import com.example.models.InterruptionDecision
 import com.example.models.InterruptionType
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
+import com.example.models.RoutineLogEntry
 import com.example.models.RoutineProposal
 import com.example.models.RuleAction
 import com.example.models.RuleException
@@ -90,7 +97,10 @@ data class SmartCompanionUiState(
     val routineDraftFromAssistant: SmartRoutine? = null,
     val demoScenarioResult: DemoScenarioStepResult? = null,
     val feedbackBanner: String? = null,
-    val phoneControl: PhoneControlState = PhoneControlState()
+    val phoneControl: PhoneControlState = PhoneControlState(),
+    val routineLogs: List<RoutineLogEntry> = emptyList(),
+    val dndPermissionAlertRoutine: String? = null,
+    val exactAlarmDeniedNotice: Boolean = false
 ) {
     val activeProfile: SmartProfile?
         get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
@@ -101,8 +111,13 @@ class SmartCompanionViewModel(
     private val simulationEngine: AutomationSimulationEngine = AutomationSimulationEngine(),
     private val deviceActionExecutor: DeviceActionExecutor = SimulatedDeviceActionExecutor(),
     private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine(),
-    private val phoneControlManager: PhoneControlManager = PhoneControlManager()
+    private val phoneControlManager: PhoneControlManager = PhoneControlManager(),
+    private val routineBackupStore: RoutineStateBackupStore = InMemoryRoutineStateBackupStore(),
+    private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
+    private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> }
 ) : ViewModel() {
+
+    private val routinePhoneController = RoutinePhoneController(phoneControlManager, routineBackupStore)
 
     private val _activeFocus = MutableStateFlow(ActiveFocusSession())
     private val _lastCompletedFocusSummary = MutableStateFlow<String?>(null)
@@ -115,6 +130,8 @@ class SmartCompanionViewModel(
     private val _demoScenarioResult = MutableStateFlow<DemoScenarioStepResult?>(null)
     private val _feedbackBanner = MutableStateFlow<String?>(null)
     private val _isReady = MutableStateFlow(false)
+    private val _dndPermissionAlertRoutine = MutableStateFlow<String?>(null)
+    private val _exactAlarmDeniedNotice = MutableStateFlow(false)
 
     private var focusTimerJob: Job? = null
 
@@ -152,17 +169,26 @@ class SmartCompanionViewModel(
         _lastCompletedFocusSummary,
         _demoScenarioResult,
         _routineDraftFromAssistant,
-        phoneControlManager.state
-    ) { focusSummary, scenarioResult, draftRoutine, phoneControl ->
-        ExtraBundle(focusSummary, scenarioResult, draftRoutine, phoneControl)
+        phoneControlManager.state,
+        repository.routineLogs
+    ) { focusSummary, scenarioResult, draftRoutine, phoneControl, routineLogs ->
+        ExtraBundle(focusSummary, scenarioResult, draftRoutine, phoneControl, routineLogs)
+    }
+
+    private val alertDataFlow = combine(
+        _dndPermissionAlertRoutine,
+        _exactAlarmDeniedNotice
+    ) { dndAlert, exactDenied ->
+        dndAlert to exactDenied
     }
 
     val uiState: StateFlow<SmartCompanionUiState> = combine(
         coreDataFlow,
         secondaryDataFlow,
         interactiveDataFlow,
-        extraDataFlow
-    ) { core, sec, inter, extra ->
+        extraDataFlow,
+        alertDataFlow
+    ) { core, sec, inter, extra, alerts ->
         SmartCompanionUiState(
             isReady = inter.isReady,
             preferences = core.prefs,
@@ -182,7 +208,10 @@ class SmartCompanionViewModel(
             routineDraftFromAssistant = extra.draftRoutine,
             demoScenarioResult = extra.scenarioResult,
             feedbackBanner = inter.feedbackBanner,
-            phoneControl = extra.phoneControl
+            phoneControl = extra.phoneControl,
+            routineLogs = extra.routineLogs,
+            dndPermissionAlertRoutine = alerts.first,
+            exactAlarmDeniedNotice = alerts.second
         )
     }.stateIn(
         scope = viewModelScope,
@@ -193,6 +222,8 @@ class SmartCompanionViewModel(
     init {
         viewModelScope.launch {
             repository.ensureSeeded()
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
+            refreshPhoneControlState()
             _isReady.value = true
         }
     }
@@ -208,11 +239,49 @@ class SmartCompanionViewModel(
     }
 
     fun refreshPhoneControlState() {
-        phoneControlManager.refreshPermissionAndDeviceState()
+        val refreshed = phoneControlManager.refreshPermissionAndDeviceState()
+        if (refreshed.hasDndAccess) {
+            routineBackupStore.setDndPermissionMissing(false, null)
+            _dndPermissionAlertRoutine.value = null
+        } else if (routineBackupStore.isDndPermissionMissing()) {
+            _dndPermissionAlertRoutine.value = routineBackupStore.getDndMissingRoutineName() ?: ""
+        }
+        if (refreshed.canScheduleExactAlarms) {
+            _exactAlarmDeniedNotice.value = false
+        }
+    }
+
+    fun dismissDndPermissionAlert() {
+        routineBackupStore.setDndPermissionMissing(false, null)
+        _dndPermissionAlertRoutine.value = null
+    }
+
+    fun clearRoutineLogs() {
+        viewModelScope.launch {
+            repository.clearRoutineLogs()
+            showBanner(if (isArabic()) "تم مسح سجل الروتين" else "Routine log cleared")
+        }
     }
 
     fun createDndAccessSettingsIntent(context: Context): Intent {
         return phoneControlManager.createDndAccessSettingsIntent(context)
+    }
+
+    fun createExactAlarmSettingsIntent(context: Context): Intent {
+        return phoneControlManager.createExactAlarmSettingsIntent(context)
+    }
+
+    fun rescheduleAllAlarms() {
+        viewModelScope.launch {
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
+        }
+    }
+
+    private fun rescheduleRoutinesInternal(routines: List<SmartRoutine>): Boolean {
+        val result = alarmScheduler.rescheduleAll(routines)
+        _exactAlarmDeniedNotice.value = result.exactAlarmPermissionDenied
+        phoneControlManager.refreshPermissionAndDeviceState()
+        return result.exactAlarmPermissionDenied
     }
 
     fun setRealRingerMode(mode: SoundMode) {
@@ -485,7 +554,8 @@ class SmartCompanionViewModel(
     }
 
     // --- Routine CRUD & Simulation Engine ---
-    fun saveRoutine(routine: SmartRoutine) {
+    @JvmOverloads
+    fun saveRoutine(routine: SmartRoutine, startImmediately: Boolean = false) {
         viewModelScope.launch {
             repository.upsertRoutine(routine)
             _routineDraftFromAssistant.value = null
@@ -497,7 +567,67 @@ class SmartCompanionViewModel(
                 explanation = "Rule saved with ${routine.actions.size} actions and ${routine.exceptions.size} exceptions.",
                 relatedRoutineName = routine.name
             )
-            showBanner(if (isArabic()) "تم حفظ الروتين '${routine.name}'" else "Saved routine '${routine.name}'")
+            val allRoutines = repository.getAllRoutinesOnce()
+            val exactDenied = rescheduleRoutinesInternal(allRoutines)
+
+            if (startImmediately && routine.isEnabled) {
+                val state = uiState.value
+                val routinesWithSaved = state.routines.filterNot { it.id == routine.id } + routine
+                val output = simulationEngine.evaluate(
+                    event = SimulationEvent.ManualRoutine(routine.id),
+                    routines = routinesWithSaved,
+                    profiles = state.profiles,
+                    context = state.preferences.simulatedContext,
+                    isAutomationPaused = state.preferences.isAutomationPaused,
+                    activeProfileId = state.preferences.activeProfileId,
+                    isFocusActive = state.activeFocus.isActive,
+                    conflictPolicy = state.preferences.conflictPolicy
+                )
+                _latestTrace.value = output.trace
+                applyEngineOutput(output)
+                applyRealPhoneControlForRoutine(routine, state.profiles, scheduleEndAlarm = true)
+            } else if (exactDenied) {
+                showBanner(
+                    if (isArabic()) "تعذّر جدولة المنبه الدقيق: يرجى السماح بإذن المنبهات الدقيقة من الإعدادات"
+                    else "Exact alarm permission denied — enable Alarms & reminders in Settings"
+                )
+            } else {
+                showBanner(if (isArabic()) "تم حفظ الروتين '${routine.name}'" else "Saved routine '${routine.name}'")
+            }
+        }
+    }
+
+    private suspend fun applyRealPhoneControlForRoutine(
+        routine: SmartRoutine,
+        profiles: List<com.example.models.SmartProfile>,
+        scheduleEndAlarm: Boolean
+    ) {
+        val now = System.currentTimeMillis()
+        val ar = isArabic()
+        val outcome = routinePhoneController.applyRoutineStart(
+            routine = routine,
+            profiles = profiles,
+            isArabic = ar,
+            timestampMillis = now
+        )
+        repository.addRoutineLog(outcome.logEntry)
+
+        if (outcome.permissionRequired) {
+            _dndPermissionAlertRoutine.value = routine.name
+            onDndPermissionMissingNotification(routine.name, ar)
+            showBanner(
+                if (ar) "مطلوب إذن الوصول لعدم الإزعاج لتشغيل '${routine.name}'"
+                else "Do Not Disturb access is required to apply '${routine.name}'"
+            )
+            return
+        }
+
+        if (scheduleEndAlarm && RoutineAlarmCalculator.isTimeSchedulable(routine)) {
+            val endAt = RoutineAlarmCalculator.computeImmediateEndTimeMillis(routine, now)
+            val endRes = alarmScheduler.scheduleImmediateEndAlarm(routine, endAt)
+            if (endRes.exactAlarmPermissionDenied) {
+                _exactAlarmDeniedNotice.value = true
+            }
         }
     }
 
@@ -505,6 +635,10 @@ class SmartCompanionViewModel(
         viewModelScope.launch {
             val updated = routine.copy(isEnabled = !routine.isEnabled)
             repository.upsertRoutine(updated)
+            if (!updated.isEnabled) {
+                alarmScheduler.cancelRoutineAlarms(updated.id)
+            }
+            val exactDenied = rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
                 title = "${updated.name} ${if (updated.isEnabled) "Enabled" else "Disabled"}",
                 category = EventCategory.ROUTINE,
@@ -513,13 +647,20 @@ class SmartCompanionViewModel(
                 explanation = "Routine toggle updated by user.",
                 relatedRoutineName = updated.name
             )
-            showBanner(
-                if (isArabic()) {
-                    "${updated.name}: ${if (updated.isEnabled) "مفعّل" else "معطّل"}"
-                } else {
-                    "${updated.name} ${if (updated.isEnabled) "enabled" else "disabled"}"
-                }
-            )
+            if (exactDenied && updated.isEnabled) {
+                showBanner(
+                    if (isArabic()) "تعذّر جدولة المنبه الدقيق: يرجى السماح بإذن المنبهات الدقيقة"
+                    else "Exact alarm permission denied — enable Alarms & reminders"
+                )
+            } else {
+                showBanner(
+                    if (isArabic()) {
+                        "${updated.name}: ${if (updated.isEnabled) "مفعّل" else "معطّل"}"
+                    } else {
+                        "${updated.name} ${if (updated.isEnabled) "enabled" else "disabled"}"
+                    }
+                )
+            }
         }
     }
 
@@ -534,6 +675,7 @@ class SmartCompanionViewModel(
                 lastExecutedAtMillis = null
             )
             repository.upsertRoutine(copy)
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
                 title = "Duplicated Routine: ${copy.name}",
                 category = EventCategory.ROUTINE,
@@ -548,7 +690,9 @@ class SmartCompanionViewModel(
 
     fun deleteRoutine(routine: SmartRoutine) {
         viewModelScope.launch {
+            alarmScheduler.cancelRoutineAlarms(routine.id)
             repository.deleteRoutine(routine.id)
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
                 title = "Deleted Routine: ${routine.name}",
                 category = EventCategory.ROUTINE,
@@ -564,6 +708,7 @@ class SmartCompanionViewModel(
     fun resetDemoRoutines() {
         viewModelScope.launch {
             repository.resetDemoRoutines()
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
                 title = "Demo Routines Reset",
                 category = EventCategory.SYSTEM,
@@ -576,7 +721,28 @@ class SmartCompanionViewModel(
     }
 
     fun runRoutineManually(routine: SmartRoutine) {
-        runSimulationEvent(SimulationEvent.ManualRoutine(routine.id))
+        viewModelScope.launch {
+            val state = uiState.value
+            val output = simulationEngine.evaluate(
+                event = SimulationEvent.ManualRoutine(routine.id),
+                routines = state.routines,
+                profiles = state.profiles,
+                context = state.preferences.simulatedContext,
+                isAutomationPaused = state.preferences.isAutomationPaused,
+                activeProfileId = state.preferences.activeProfileId,
+                isFocusActive = state.activeFocus.isActive,
+                conflictPolicy = state.preferences.conflictPolicy
+            )
+            _latestTrace.value = output.trace
+            applyEngineOutput(output)
+            if (output.selectedRoutine != null) {
+                applyRealPhoneControlForRoutine(
+                    routine = output.selectedRoutine,
+                    profiles = state.profiles,
+                    scheduleEndAlarm = true
+                )
+            }
+        }
     }
 
     fun runSimulationEvent(event: SimulationEvent) {
@@ -1179,6 +1345,7 @@ class SmartCompanionViewModel(
     fun confirmAssistantProposal(messageId: String, proposal: RoutineProposal) {
         viewModelScope.launch {
             repository.upsertRoutine(proposal.routine)
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             _pendingRoutineDraft.value = null
             _clarificationTurnCount.value = 0
             val note = if (isArabic()) {
@@ -1320,8 +1487,11 @@ class SmartCompanionViewModel(
             _lastInterruption.value = null
             _pendingConflict.value = null
             _demoScenarioResult.value = null
+            routineBackupStore.clearAll()
+            _dndPermissionAlertRoutine.value = null
             _assistantMessages.value = initialAssistantMessages(uiState.value.preferences.language)
             repository.resetAllDemoData(resetOnboarding = resetOnboarding)
+            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             showBanner(if (isArabic()) "تمت استعادة جميع بيانات العرض الافتراضية" else "All demo data restored to initial state")
         }
     }
@@ -1610,20 +1780,27 @@ class SmartCompanionViewModel(
         val focusSummary: String?,
         val scenarioResult: DemoScenarioStepResult?,
         val draftRoutine: SmartRoutine?,
-        val phoneControl: PhoneControlState
+        val phoneControl: PhoneControlState,
+        val routineLogs: List<RoutineLogEntry>
     )
 
     class Factory(
         private val repository: SmartCompanionRepository,
         private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine(),
-        private val phoneControlManager: PhoneControlManager = PhoneControlManager()
+        private val phoneControlManager: PhoneControlManager = PhoneControlManager(),
+        private val routineBackupStore: RoutineStateBackupStore = InMemoryRoutineStateBackupStore(),
+        private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
+        private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> }
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return SmartCompanionViewModel(
                 repository = repository,
                 assistantEngine = assistantEngine,
-                phoneControlManager = phoneControlManager
+                phoneControlManager = phoneControlManager,
+                routineBackupStore = routineBackupStore,
+                alarmScheduler = alarmScheduler,
+                onDndPermissionMissingNotification = onDndPermissionMissingNotification
             ) as T
         }
     }

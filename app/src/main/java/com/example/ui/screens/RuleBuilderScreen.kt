@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,20 +22,35 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,10 +62,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.automation.RoutineAlarmCalculator
 import com.example.models.ActionType
 import com.example.models.ConditionType
 import com.example.models.ConflictResolutionPolicy
@@ -62,23 +81,31 @@ import com.example.models.SimulatedActivity
 import com.example.models.SimulatedLocation
 import com.example.models.SmartRoutine
 import com.example.models.SoundMode
+import com.example.models.TimeWindow
 import com.example.models.TriggerType
 import com.example.simulation.AutomationSimulationEngine
 import com.example.simulation.SimulationEvent
 import com.example.ui.components.CompanionCard
+import com.example.ui.components.DurationMinutesSelector
+import com.example.ui.components.ExactTimeEntrySection
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
+import com.example.utils.ClockTime
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
+import com.example.utils.RoutineTimeInputValidator
 import com.example.utils.TimeUtils
 import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
-import kotlin.math.roundToInt
 
 private enum class BuilderStepSheet {
     WHEN,
@@ -87,13 +114,14 @@ private enum class BuilderStepSheet {
     EXCEPT
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun RuleBuilderScreen(
     existingRoutine: SmartRoutine?,
     strings: AppStrings,
     state: SmartCompanionUiState,
     viewModel: SmartCompanionViewModel,
+    onRequestNotificationPermission: () -> Unit = {},
     onSaved: () -> Unit
 ) {
     val initial = existingRoutine ?: state.routineDraftFromAssistant
@@ -130,7 +158,30 @@ fun RuleBuilderScreen(
     var activity by remember(initial?.id) {
         mutableStateOf(initial?.trigger?.activity ?: SimulatedActivity.STUDYING)
     }
-    var endHour by remember(initial?.id) { mutableIntStateOf(20) }
+    val context = LocalContext.current
+    val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
+
+    val parsedInitialEnd = remember(initial?.id) {
+        initial?.scheduleEndTime?.let { RoutineTimeInputValidator.parseStoredClock(it) }
+    }
+    var endHour by remember(initial?.id) {
+        mutableIntStateOf(parsedInitialEnd?.hour24 ?: ((triggerHour + 2) % 24))
+    }
+    var endMinute by remember(initial?.id) {
+        mutableIntStateOf(parsedInitialEnd?.minute ?: triggerMinute)
+    }
+    var endByDuration by remember(initial?.id) { mutableStateOf(false) }
+    var selectedDurationMinutes by remember(initial?.id) { mutableIntStateOf(60) }
+    var customDurationText by remember(initial?.id) { mutableStateOf("60") }
+    var startImmediately by remember(initial?.id) { mutableStateOf(false) }
+    var startTimeError by remember { mutableStateOf<String?>(null) }
+    var endTimeError by remember { mutableStateOf<String?>(null) }
+
+    var customDays by remember(initial?.id) { mutableStateOf(initial?.customDays ?: emptySet()) }
+    var isOneTime by remember(initial?.id) { mutableStateOf(initial?.isOneTime ?: false) }
+    var skipDates by remember(initial?.id) { mutableStateOf(initial?.skipDates ?: emptyList()) }
+    var extraTimeWindows by remember(initial?.id) { mutableStateOf(initial?.extraTimeWindows ?: emptyList()) }
+    var showSkipDatePicker by remember { mutableStateOf(false) }
 
     // 2. ONLY IF (Conditions)
     var selectedConditions by remember(initial?.id) {
@@ -157,7 +208,16 @@ fun RuleBuilderScreen(
                 ?: SoundMode.SILENT
         )
     }
-    var focusDuration by remember(initial?.id) { mutableIntStateOf(45) }
+    var enableDoNotDisturb by remember(initial?.id) {
+        mutableStateOf(initial?.enableDoNotDisturb ?: false)
+    }
+    val initialFocusMins = remember(initial?.id) {
+        initial?.actions?.firstOrNull { it.type == ActionType.START_FOCUS_SESSION }
+            ?.targetValue?.toIntOrNull() ?: 45
+    }
+    var focusDuration by remember(initial?.id) { mutableIntStateOf(initialFocusMins) }
+    var focusDurationText by remember(initial?.id) { mutableStateOf(initialFocusMins.toString()) }
+    var focusDurationError by remember { mutableStateOf<String?>(null) }
 
     // 4. EXCEPT (Exceptions)
     var selectedExceptions by remember(initial?.id) {
@@ -168,18 +228,32 @@ fun RuleBuilderScreen(
     }
 
     var validationError by remember { mutableStateOf<String?>(null) }
+    var sheetValidationError by remember { mutableStateOf<String?>(null) }
     var testResultText by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = activeSheet != null) {
         activeSheet = null
     }
 
+    val chosenTimeRangeText = RoutineTimeInputValidator.formatTimeRange(
+        start = ClockTime(triggerHour, triggerMinute),
+        end = ClockTime(endHour, endMinute),
+        isArabic = strings.isArabic,
+        is24Hour = is24Hour
+    )
+
+    val daysDisplaySummary = if (customDays.isNotEmpty()) {
+        customDays.joinToString(", ") { strings.dayFilterLabel(it, short = true) }
+    } else {
+        strings.dayFilterLabel(dayFilter)
+    }
+    val extraWinSummary = if (extraTimeWindows.isNotEmpty()) " (+${extraTimeWindows.size})" else ""
     val triggerSummary = when (triggerType) {
         TriggerType.SPECIFIC_TIME ->
-            "${strings.dayFilterLabel(dayFilter)} • ${TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic)}"
-        TriggerType.SPECIFIC_DAYS -> strings.dayFilterLabel(dayFilter)
+            "$daysDisplaySummary • $chosenTimeRangeText$extraWinSummary"
+        TriggerType.SPECIFIC_DAYS -> daysDisplaySummary
         TriggerType.DATE_AND_TIME ->
-            "${strings.dayFilterLabel(dayFilter)} ${TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic)}"
+            "$daysDisplaySummary • $chosenTimeRangeText$extraWinSummary"
         TriggerType.MANUAL -> strings.triggerTypeLabel(TriggerType.MANUAL)
         TriggerType.FOCUS_STARTED -> strings.triggerTypeLabel(TriggerType.FOCUS_STARTED)
         TriggerType.FOCUS_ENDED -> strings.triggerTypeLabel(TriggerType.FOCUS_ENDED)
@@ -198,13 +272,15 @@ fun RuleBuilderScreen(
 
     val targetProfileName = state.profiles.firstOrNull { it.id == targetProfileId }
         ?.let { strings.localizedProfileName(it) } ?: "Study"
-    val actionSummary = selectedActionTypes.joinToString(" • ") {
+    val actionParts = selectedActionTypes.map {
         when (it) {
             ActionType.ACTIVATE_PROFILE -> targetProfileName
             ActionType.SET_SOUND_MODE -> strings.soundModeLabel(targetSoundMode)
             else -> strings.actionTypeLabel(it)
         }
-    }.ifEmpty { if (strings.isArabic) "مثال: تفعيل وضع الدراسة وصامت" else "e.g., Turn on Study mode & Silent" }
+    } + (if (enableDoNotDisturb) listOf(strings.phoneControlDndStatusPrefix) else emptyList())
+    val actionSummary = actionParts.joinToString(" • ")
+        .ifEmpty { if (strings.isArabic) "مثال: تفعيل وضع الدراسة وصامت" else "e.g., Turn on Study mode & Silent" }
 
     val exceptionSummary = selectedExceptions.joinToString(" • ") { strings.exceptionTypeLabel(it) }
         .ifEmpty { if (strings.isArabic) "مثال: جهات الطوارئ تصلك دائماً" else "e.g., Emergency contacts always get through" }
@@ -225,8 +301,8 @@ fun RuleBuilderScreen(
         }
         val conditions = selectedConditions.map { c ->
             val v = when (c) {
-                ConditionType.DAY_OF_WEEK -> strings.dayFilterLabel(dayFilter)
-                ConditionType.TIME_RANGE -> "${TimeUtils.formatTime12h(triggerHour, 0, strings.isArabic)}–${TimeUtils.formatTime12h(endHour, 0, strings.isArabic)}"
+                ConditionType.DAY_OF_WEEK -> daysDisplaySummary
+                ConditionType.TIME_RANGE -> "${TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic)}–${TimeUtils.formatTime12h(endHour, endMinute, strings.isArabic)}"
                 ConditionType.ACTIVE_PROFILE -> targetProfileId
                 ConditionType.AUTOMATION_ENABLED -> strings.activeLabel
                 ConditionType.SIMULATED_LOCATION -> strings.locationLabel(location)
@@ -256,14 +332,19 @@ fun RuleBuilderScreen(
             actions = actions,
             exceptions = exceptions,
             priority = priority,
-            scheduleStartTime = TimeUtils.formatTime12h(triggerHour, triggerMinute),
-            scheduleEndTime = TimeUtils.formatTime12h(endHour, 0),
+            scheduleStartTime = TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic),
+            scheduleEndTime = TimeUtils.formatTime12h(endHour, endMinute, strings.isArabic),
             targetProfileId = if (ActionType.ACTIVATE_PROFILE in selectedActionTypes) targetProfileId else null,
             lastExecutionResult = existingRoutine?.lastExecutionResult
                 ?: (if (strings.isArabic) "محفوظ — جاهز للتشغيل" else "Saved — ready to evaluate"),
             lastExecutedAtMillis = existingRoutine?.lastExecutedAtMillis,
             executionCount = existingRoutine?.executionCount ?: 0,
-            skippedCount = existingRoutine?.skippedCount ?: 0
+            skippedCount = existingRoutine?.skippedCount ?: 0,
+            enableDoNotDisturb = enableDoNotDisturb,
+            isOneTime = isOneTime,
+            skipDates = skipDates,
+            extraTimeWindows = extraTimeWindows,
+            customDays = customDays
         )
     }
 
@@ -307,38 +388,442 @@ fun RuleBuilderScreen(
                                 listOf(
                                     DayFilter.EVERY_DAY,
                                     DayFilter.WEEKDAYS,
-                                    DayFilter.WEEKENDS,
-                                    DayFilter.MONDAY,
-                                    DayFilter.FRIDAY
+                                    DayFilter.WEEKENDS
                                 ).forEach { df ->
                                     FilterChip(
-                                        selected = dayFilter == df,
-                                        onClick = { dayFilter = df },
-                                        label = { Text(strings.dayFilterLabel(df)) }
+                                        selected = customDays.isEmpty() && dayFilter == df,
+                                        onClick = {
+                                            customDays = emptySet()
+                                            dayFilter = df
+                                        },
+                                        label = { Text(strings.dayFilterLabel(df)) },
+                                        modifier = Modifier.testTag("day_preset_${df.name}")
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = strings.customDaysLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    DayFilter.MONDAY,
+                                    DayFilter.TUESDAY,
+                                    DayFilter.WEDNESDAY,
+                                    DayFilter.THURSDAY,
+                                    DayFilter.FRIDAY,
+                                    DayFilter.SATURDAY,
+                                    DayFilter.SUNDAY
+                                ).forEach { day ->
+                                    val selected = day in customDays || (customDays.isEmpty() && dayFilter == day)
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = {
+                                            val updated = if (day in customDays) {
+                                                customDays - day
+                                            } else {
+                                                customDays + day
+                                            }
+                                            customDays = updated
+                                            if (updated.size == 1) {
+                                                dayFilter = updated.first()
+                                            }
+                                        },
+                                        label = { Text(strings.dayFilterLabel(day, short = true)) },
+                                        modifier = Modifier.testTag("custom_day_${day.name}")
                                     )
                                 }
                             }
                             if (triggerType != TriggerType.SPECIFIC_DAYS) {
+                                Spacer(Modifier.height(14.dp))
+                                ExactTimeEntrySection(
+                                    label = strings.startTimeLabel,
+                                    hour24 = triggerHour,
+                                    minute = triggerMinute,
+                                    strings = strings,
+                                    testTagPrefix = "start_time",
+                                    onTimeChanged = { newH, newM ->
+                                        triggerHour = newH
+                                        triggerMinute = newM
+                                        startImmediately = false
+                                        sheetValidationError = null
+                                        if (endByDuration) {
+                                            RoutineTimeInputValidator.validateDurationMinutes(
+                                                customDurationText,
+                                                strings.isArabic
+                                            ).minutes?.let { mins ->
+                                                val end = RoutineTimeInputValidator.addMinutes(newH, newM, mins)
+                                                endHour = end.hour24
+                                                endMinute = end.minute
+                                            }
+                                        }
+                                    },
+                                    onValidationErrorChanged = {
+                                        startTimeError = it
+                                        if (it == null) sheetValidationError = null
+                                    },
+                                    trailingAction = {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                val durationForNow = if (endByDuration) {
+                                                    RoutineTimeInputValidator.validateDurationMinutes(
+                                                        customDurationText,
+                                                        strings.isArabic
+                                                    ).minutes
+                                                } else {
+                                                    null
+                                                }
+                                                val nowResult = RoutineTimeInputValidator.applyNowSelection(
+                                                    endModeIsDuration = endByDuration,
+                                                    durationMinutes = durationForNow
+                                                )
+                                                triggerHour = nowResult.start.hour24
+                                                triggerMinute = nowResult.start.minute
+                                                nowResult.end?.let {
+                                                    endHour = it.hour24
+                                                    endMinute = it.minute
+                                                }
+                                                startImmediately = nowResult.startImmediately
+                                                startTimeError = null
+                                                sheetValidationError = null
+                                                validationError = null
+                                            },
+                                            modifier = Modifier
+                                                .defaultMinSize(minHeight = 48.dp)
+                                                .testTag("start_time_now_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.MyLocation,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(strings.nowBtn)
+                                        }
+                                    }
+                                )
+
+                                if (startImmediately) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        color = StatusEmerald.copy(alpha = 0.14f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("starts_immediately_badge")
+                                    ) {
+                                        Text(
+                                            text = strings.startsImmediatelyHint,
+                                            color = StatusEmerald,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Spacer(Modifier.height(12.dp))
+
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = !endByDuration,
+                                        onClick = {
+                                            endByDuration = false
+                                            endTimeError = null
+                                            sheetValidationError = null
+                                        },
+                                        label = { Text(strings.endAtExactTimeLabel) },
+                                        modifier = Modifier
+                                            .defaultMinSize(minHeight = 48.dp)
+                                            .testTag("end_mode_exact")
+                                    )
+                                    FilterChip(
+                                        selected = endByDuration,
+                                        onClick = {
+                                            endByDuration = true
+                                            val durRes = RoutineTimeInputValidator.validateDurationMinutes(
+                                                customDurationText,
+                                                strings.isArabic
+                                            )
+                                            endTimeError = durRes.errorMessage
+                                            durRes.minutes?.let { mins ->
+                                                selectedDurationMinutes = mins
+                                                val end = RoutineTimeInputValidator.addMinutes(
+                                                    triggerHour,
+                                                    triggerMinute,
+                                                    mins
+                                                )
+                                                endHour = end.hour24
+                                                endMinute = end.minute
+                                            }
+                                            sheetValidationError = null
+                                        },
+                                        label = { Text(strings.endAfterDurationLabel) },
+                                        modifier = Modifier
+                                            .defaultMinSize(minHeight = 48.dp)
+                                            .testTag("end_mode_duration")
+                                    )
+                                }
+
+                                Spacer(Modifier.height(10.dp))
+                                if (!endByDuration) {
+                                    ExactTimeEntrySection(
+                                        label = strings.endTimeLabel,
+                                        hour24 = endHour,
+                                        minute = endMinute,
+                                        strings = strings,
+                                        testTagPrefix = "end_time",
+                                        onTimeChanged = { newH, newM ->
+                                            endHour = newH
+                                            endMinute = newM
+                                            sheetValidationError = null
+                                        },
+                                        onValidationErrorChanged = {
+                                            endTimeError = it
+                                            if (it == null) sheetValidationError = null
+                                        }
+                                    )
+                                } else {
+                                    DurationMinutesSelector(
+                                        label = strings.endAfterDurationLabel,
+                                        selectedMinutes = selectedDurationMinutes,
+                                        minutesText = customDurationText,
+                                        strings = strings,
+                                        testTagPrefix = "end_duration",
+                                        onMinutesSelected = { mins ->
+                                            selectedDurationMinutes = mins
+                                            customDurationText = mins.toString()
+                                            endTimeError = null
+                                            sheetValidationError = null
+                                            val end = RoutineTimeInputValidator.addMinutes(
+                                                triggerHour,
+                                                triggerMinute,
+                                                mins
+                                            )
+                                            endHour = end.hour24
+                                            endMinute = end.minute
+                                        },
+                                        onCustomTextChanged = { raw ->
+                                            customDurationText = raw
+                                            val res = RoutineTimeInputValidator.validateDurationMinutes(
+                                                raw,
+                                                strings.isArabic
+                                            )
+                                            endTimeError = res.errorMessage
+                                            if (res.minutes != null) {
+                                                selectedDurationMinutes = res.minutes
+                                                val end = RoutineTimeInputValidator.addMinutes(
+                                                    triggerHour,
+                                                    triggerMinute,
+                                                    res.minutes
+                                                )
+                                                endHour = end.hour24
+                                                endMinute = end.minute
+                                                sheetValidationError = null
+                                            }
+                                        },
+                                        errorMessage = endTimeError
+                                    )
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("when_range_preview")
+                                ) {
+                                    Text(
+                                        text = chosenTimeRangeText,
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontFamily = JetBrainsMonoFamily,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Spacer(Modifier.height(12.dp))
+
+                                // Additional Time Windows
                                 Text(
-                                    text = TimeUtils.formatTime12h(triggerHour, triggerMinute, strings.isArabic),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Slider(
-                                    value = triggerHour.toFloat(),
-                                    onValueChange = { triggerHour = it.roundToInt().coerceIn(0, 23) },
-                                    valueRange = 0f..23f
-                                )
-                                Text(
-                                    text = "${if (strings.isArabic) "إلى" else "Until"}: ${TimeUtils.formatTime12h(endHour, 0, strings.isArabic)}",
+                                    text = strings.extraTimeWindowsLabel,
                                     style = MaterialTheme.typography.labelLarge
                                 )
-                                Slider(
-                                    value = endHour.toFloat(),
-                                    onValueChange = { endHour = it.roundToInt().coerceIn(0, 23) },
-                                    valueRange = 0f..23f
+                                Spacer(Modifier.height(6.dp))
+                                extraTimeWindows.forEachIndexed { index, win ->
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .testTag("extra_window_card_$index")
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = RoutineTimeInputValidator.formatTimeRange(
+                                                        start = ClockTime(win.startHour, win.startMinute),
+                                                        end = ClockTime(win.endHour, win.endMinute),
+                                                        isArabic = strings.isArabic,
+                                                        is24Hour = is24Hour
+                                                    ),
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        extraTimeWindows = extraTimeWindows.filterIndexed { i, _ -> i != index }
+                                                    },
+                                                    modifier = Modifier.testTag("remove_extra_window_$index")
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.DeleteOutline,
+                                                        contentDescription = strings.removeWindowDesc,
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                            ExactTimeEntrySection(
+                                                label = strings.startTimeLabel,
+                                                hour24 = win.startHour,
+                                                minute = win.startMinute,
+                                                strings = strings,
+                                                testTagPrefix = "extra_start_$index",
+                                                onTimeChanged = { newH, newM ->
+                                                    extraTimeWindows = extraTimeWindows.mapIndexed { i, old ->
+                                                        if (i == index) old.copy(startHour = newH, startMinute = newM) else old
+                                                    }
+                                                }
+                                            )
+                                            Spacer(Modifier.height(6.dp))
+                                            ExactTimeEntrySection(
+                                                label = strings.endTimeLabel,
+                                                hour24 = win.endHour,
+                                                minute = win.endMinute,
+                                                strings = strings,
+                                                testTagPrefix = "extra_end_$index",
+                                                onTimeChanged = { newH, newM ->
+                                                    extraTimeWindows = extraTimeWindows.mapIndexed { i, old ->
+                                                        if (i == index) old.copy(endHour = newH, endMinute = newM) else old
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        val nextStart = RoutineTimeInputValidator.addMinutes(endHour, endMinute, 60)
+                                        val nextEnd = RoutineTimeInputValidator.addMinutes(nextStart.hour24, nextStart.minute, 60)
+                                        extraTimeWindows = extraTimeWindows + TimeWindow(
+                                            startHour = nextStart.hour24,
+                                            startMinute = nextStart.minute,
+                                            endHour = nextEnd.hour24,
+                                            endMinute = nextEnd.minute
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .testTag("builder_add_time_window_btn")
+                                ) {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(strings.addTimeWindowBtn)
+                                }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Spacer(Modifier.height(12.dp))
+
+                                // One-time routine switch
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(strings.oneTimeRoutineLabel, style = MaterialTheme.typography.titleSmall)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            strings.oneTimeRoutineHint,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Switch(
+                                        checked = isOneTime,
+                                        onCheckedChange = { isOneTime = it },
+                                        modifier = Modifier.testTag("builder_one_time_switch")
+                                    )
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Spacer(Modifier.height(12.dp))
+
+                                // Skip Dates
+                                Text(
+                                    text = strings.skipDatesLabel,
+                                    style = MaterialTheme.typography.labelLarge
                                 )
+                                Spacer(Modifier.height(6.dp))
+                                if (skipDates.isNotEmpty()) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        skipDates.forEach { dateStr ->
+                                            InputChip(
+                                                selected = true,
+                                                onClick = { skipDates = skipDates - dateStr },
+                                                label = { Text(dateStr) },
+                                                trailingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Close,
+                                                        contentDescription = strings.delete,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                },
+                                                modifier = Modifier.testTag("skip_date_chip_$dateStr")
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                }
+                                OutlinedButton(
+                                    onClick = { showSkipDatePicker = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .testTag("builder_add_skip_date_btn")
+                                ) {
+                                    Icon(Icons.Rounded.EventBusy, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(strings.addSkipDateBtn)
+                                }
                             }
                         }
 
@@ -460,20 +945,60 @@ fun RuleBuilderScreen(
 
                         if (ActionType.START_FOCUS_SESSION in selectedActionTypes) {
                             Spacer(Modifier.height(14.dp))
-                            Text(
-                                "${strings.focusDurationLabel}: ${TimeUtils.formatDurationMinutes(focusDuration, strings.isArabic)}",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf(25, 45, 60, 90).forEach { mins ->
-                                    FilterChip(
-                                        selected = focusDuration == mins,
-                                        onClick = { focusDuration = mins },
-                                        label = { Text(TimeUtils.formatDurationMinutes(mins, strings.isArabic)) }
+                            DurationMinutesSelector(
+                                label = strings.focusDurationLabel,
+                                selectedMinutes = focusDuration,
+                                minutesText = focusDurationText,
+                                strings = strings,
+                                testTagPrefix = "focus_duration",
+                                onMinutesSelected = { mins ->
+                                    focusDuration = mins
+                                    focusDurationText = mins.toString()
+                                    focusDurationError = null
+                                    sheetValidationError = null
+                                },
+                                onCustomTextChanged = { raw ->
+                                    focusDurationText = raw
+                                    val res = RoutineTimeInputValidator.validateDurationMinutes(
+                                        raw,
+                                        strings.isArabic
                                     )
-                                }
+                                    focusDurationError = res.errorMessage
+                                    if (res.minutes != null) {
+                                        focusDuration = res.minutes
+                                        sheetValidationError = null
+                                    }
+                                },
+                                errorMessage = focusDurationError
+                            )
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(strings.dndEnableForRoutineLabel, style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    strings.dndEnableForRoutineHint,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
+                            Spacer(Modifier.width(8.dp))
+                            Switch(
+                                checked = enableDoNotDisturb,
+                                onCheckedChange = {
+                                    enableDoNotDisturb = it
+                                    validationError = null
+                                },
+                                modifier = Modifier.testTag("builder_enable_dnd_switch")
+                            )
                         }
                     }
                 }
@@ -510,15 +1035,44 @@ fun RuleBuilderScreen(
             }
 
             item {
-                Button(
-                    onClick = { activeSheet = null },
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("builder_step_done_btn")
-                ) {
-                    Text(strings.builderDoneBtn)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (sheetValidationError != null) {
+                        Text(
+                            text = sheetValidationError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("builder_sheet_error")
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val err = when (activeSheet) {
+                                BuilderStepSheet.WHEN ->
+                                    if (triggerType in listOf(TriggerType.SPECIFIC_TIME, TriggerType.DATE_AND_TIME)) {
+                                        startTimeError ?: endTimeError
+                                    } else {
+                                        null
+                                    }
+                                BuilderStepSheet.DO_THIS ->
+                                    if (ActionType.START_FOCUS_SESSION in selectedActionTypes) focusDurationError else null
+                                else -> null
+                            }
+                            if (err != null) {
+                                sheetValidationError = err
+                            } else {
+                                sheetValidationError = null
+                                activeSheet = null
+                            }
+                        },
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("builder_step_done_btn")
+                    ) {
+                        Text(strings.builderDoneBtn)
+                    }
                 }
             }
         }
@@ -659,15 +1213,37 @@ fun RuleBuilderScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = {
+                        val timeErr = if (triggerType in listOf(TriggerType.SPECIFIC_TIME, TriggerType.DATE_AND_TIME)) {
+                            startTimeError ?: endTimeError
+                        } else {
+                            null
+                        }
+                        val focusErr = if (ActionType.START_FOCUS_SESSION in selectedActionTypes) {
+                            focusDurationError
+                        } else {
+                            null
+                        }
+                        val combinedTimeErr = timeErr ?: focusErr
+                        if (combinedTimeErr != null) {
+                            validationError = combinedTimeErr
+                            return@Button
+                        }
                         if (name.isBlank()) {
                             validationError = strings.errRuleNameRequired
                             return@Button
                         }
-                        if (selectedActionTypes.isEmpty()) {
+                        if (selectedActionTypes.isEmpty() && !enableDoNotDisturb) {
                             validationError = strings.errRuleActionRequired
                             return@Button
                         }
-                        viewModel.saveRoutine(buildCandidateRoutine())
+                        val candidate = buildCandidateRoutine()
+                        if (RoutineAlarmCalculator.isTimeSchedulable(candidate) || startImmediately) {
+                            onRequestNotificationPermission()
+                        }
+                        viewModel.saveRoutine(
+                            routine = candidate,
+                            startImmediately = startImmediately
+                        )
                         onSaved()
                     },
                     shape = RoundedCornerShape(20.dp),
@@ -683,11 +1259,26 @@ fun RuleBuilderScreen(
 
                 OutlinedButton(
                     onClick = {
+                        val timeErr = if (triggerType in listOf(TriggerType.SPECIFIC_TIME, TriggerType.DATE_AND_TIME)) {
+                            startTimeError ?: endTimeError
+                        } else {
+                            null
+                        }
+                        val focusErr = if (ActionType.START_FOCUS_SESSION in selectedActionTypes) {
+                            focusDurationError
+                        } else {
+                            null
+                        }
+                        val combinedTimeErr = timeErr ?: focusErr
+                        if (combinedTimeErr != null) {
+                            validationError = combinedTimeErr
+                            return@OutlinedButton
+                        }
                         if (name.isBlank()) {
                             validationError = strings.errRuleNameRequired
                             return@OutlinedButton
                         }
-                        if (selectedActionTypes.isEmpty()) {
+                        if (selectedActionTypes.isEmpty() && !enableDoNotDisturb) {
                             validationError = strings.errRuleActionRequired
                             return@OutlinedButton
                         }
@@ -747,6 +1338,38 @@ fun RuleBuilderScreen(
             strings = strings,
             onDismiss = { showHelp = false }
         )
+    }
+
+    if (showSkipDatePicker) {
+        val datePickerState = rememberDatePickerState()
+        DatePickerDialog(
+            onDismissRequest = { showSkipDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val millis = datePickerState.selectedDateMillis
+                        if (millis != null) {
+                            val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                timeZone = TimeZone.getTimeZone("UTC")
+                            }.format(Date(millis))
+                            if (formatted !in skipDates) {
+                                skipDates = (skipDates + formatted).sorted()
+                            }
+                        }
+                        showSkipDatePicker = false
+                    }
+                ) {
+                    Text(strings.confirm)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSkipDatePicker = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 }
 

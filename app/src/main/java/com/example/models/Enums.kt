@@ -143,3 +143,10 @@ enum class TimePeriodFilter(val label: String) {
     LAST_7_DAYS("Last 7 Days"),
     LAST_30_DAYS("Last 30 Days")
 }
+
+enum class RoutineLogEventType {
+    STARTED,
+    ENDED,
+    PERMISSION_DENIED
+}
+

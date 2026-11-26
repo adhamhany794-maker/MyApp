@@ -1,5 +1,10 @@
 package com.example.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -22,8 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AlarmOff
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -33,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,11 +59,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -73,6 +85,7 @@ import com.example.ui.screens.FocusSessionsScreen
 import com.example.ui.screens.HomeDashboardScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfilesScreen
+import com.example.ui.screens.RoutineLogScreen
 import com.example.ui.screens.RoutinesScreen
 import com.example.ui.screens.RuleBuilderScreen
 import com.example.ui.screens.SettingsScreen
@@ -80,6 +93,8 @@ import com.example.ui.screens.SimulationEngineScreen
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.LocalIsDarkTheme
 import com.example.ui.theme.SmartCompanionTheme
+import com.example.ui.theme.StatusAmber
+import com.example.ui.theme.StatusCrimson
 import com.example.utils.AppStrings
 import com.example.utils.stringsFor
 import com.example.viewmodels.SmartCompanionViewModel
@@ -155,6 +170,23 @@ fun SmartCompanionApp(
                 }
             }
 
+            val context = LocalContext.current
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) { _ -> }
+
+            fun requestNotificationPermissionIfNeeded() {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val granted = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (!granted) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            }
+
             val topBarTitle = when {
                 currentRoute == NavRoutes.HOME -> strings.appName
                 currentRoute == NavRoutes.ROUTINES -> strings.navRoutines
@@ -166,6 +198,7 @@ fun SmartCompanionApp(
                 currentRoute == NavRoutes.PROFILES -> strings.screenProfiles
                 currentRoute == NavRoutes.FOCUS -> strings.screenFocus
                 currentRoute == NavRoutes.SIMULATION -> strings.screenSimulation
+                currentRoute == NavRoutes.ROUTINE_LOG -> strings.screenRoutineLog
                 currentRoute.startsWith(NavRoutes.RULE_BUILDER) -> strings.screenRuleBuilder
                 else -> strings.appName
             }
@@ -219,89 +252,206 @@ fun SmartCompanionApp(
                     }
                 }
             ) { innerPadding ->
-                NavHost(
-                    navController = navController,
-                    startDestination = NavRoutes.HOME,
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
                 ) {
-                    composable(NavRoutes.HOME) {
-                        HomeDashboardScreen(
-                            state = state,
-                            strings = strings,
-                            viewModel = viewModel,
-                            onNavigate = { route -> navigateTo(route) }
-                        )
-                    }
-                    composable(NavRoutes.ROUTINES) {
-                        RoutinesScreen(
-                            state = state,
-                            strings = strings,
-                            viewModel = viewModel,
-                            onCreateRoutine = {
-                                viewModel.clearAssistantDraft()
-                                navigateTo(NavRoutes.ruleBuilderRoute())
-                            },
-                            onEditRoutine = { id -> navigateTo(NavRoutes.ruleBuilderRoute(id)) },
-                            onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) },
-                            onOpenProfiles = { navigateTo(NavRoutes.PROFILES) },
-                            onOpenFocusSessions = { navigateTo(NavRoutes.FOCUS) }
-                        )
-                    }
-                    composable(NavRoutes.ASSISTANT) {
-                        AssistantScreen(
-                            state = state,
-                            strings = strings,
-                            viewModel = viewModel,
-                            onEditProposalInBuilder = { navigateTo(NavRoutes.ruleBuilderRoute()) }
-                        )
-                    }
-                    composable(NavRoutes.SETTINGS) {
-                        SettingsScreen(
-                            state = state,
-                            strings = strings,
-                            viewModel = viewModel,
-                            onNavigate = { route -> navigateTo(route) }
-                        )
-                    }
-                    composable(NavRoutes.CONTACTS) {
-                        ContactsScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(NavRoutes.ACTIVITY) {
-                        ActivityScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(NavRoutes.ADVANCED) {
-                        AdvancedScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(NavRoutes.PROFILES) {
-                        ProfilesScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(NavRoutes.FOCUS) {
-                        FocusSessionsScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(NavRoutes.SIMULATION) {
-                        SimulationEngineScreen(state = state, strings = strings, viewModel = viewModel)
-                    }
-                    composable(
-                        route = "${NavRoutes.RULE_BUILDER}?routineId={routineId}",
-                        arguments = listOf(
-                            navArgument("routineId") {
-                                type = NavType.StringType
-                                nullable = true
-                                defaultValue = null
+                    val alertRoutine = state.dndPermissionAlertRoutine
+                    if (alertRoutine != null && !state.phoneControl.hasDndAccess) {
+                        Surface(
+                            color = StatusCrimson.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, StatusCrimson.copy(alpha = 0.45f)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .testTag("in_app_dnd_permission_banner")
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.NotificationsOff,
+                                            contentDescription = strings.dndBannerTitle,
+                                            tint = StatusCrimson,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = if (alertRoutine.isNotBlank()) "${strings.dndBannerTitle} ($alertRoutine)" else strings.dndBannerTitle,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = StatusCrimson
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.dismissDndPermissionAlert() },
+                                        modifier = Modifier.testTag("banner_dismiss_dnd_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = strings.close,
+                                            tint = StatusCrimson
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = strings.dndBannerBody,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        val intent = viewModel.createDndAccessSettingsIntent(context)
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                    modifier = Modifier.testTag("banner_grant_dnd_btn")
+                                ) {
+                                    Text(strings.phoneControlOpenSettingsBtn)
+                                }
                             }
-                        )
-                    ) { entry ->
-                        val routineId = entry.arguments?.getString("routineId")
-                        val existing = state.routines.firstOrNull { it.id == routineId }
-                        RuleBuilderScreen(
-                            existingRoutine = existing,
-                            strings = strings,
-                            state = state,
-                            viewModel = viewModel,
-                            onSaved = { navController.popBackStack() }
-                        )
+                        }
+                    }
+
+                    if (!state.phoneControl.canScheduleExactAlarms || state.exactAlarmDeniedNotice) {
+                        Surface(
+                            color = StatusAmber.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, StatusAmber.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .testTag("in_app_exact_alarm_banner")
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AlarmOff,
+                                        contentDescription = strings.exactAlarmStatusLabel,
+                                        tint = StatusAmber,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = strings.exactAlarmDeniedBanner,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        val intent = viewModel.createExactAlarmSettingsIntent(context)
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                    modifier = Modifier.testTag("banner_grant_exact_alarm_btn")
+                                ) {
+                                    Text(strings.exactAlarmGrantBtn)
+                                }
+                            }
+                        }
+                    }
+
+                    NavHost(
+                        navController = navController,
+                        startDestination = NavRoutes.HOME,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        composable(NavRoutes.HOME) {
+                            HomeDashboardScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel,
+                                onNavigate = { route -> navigateTo(route) }
+                            )
+                        }
+                        composable(NavRoutes.ROUTINES) {
+                            RoutinesScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel,
+                                onCreateRoutine = {
+                                    viewModel.clearAssistantDraft()
+                                    navigateTo(NavRoutes.ruleBuilderRoute())
+                                },
+                                onEditRoutine = { id -> navigateTo(NavRoutes.ruleBuilderRoute(id)) },
+                                onOpenSimulationEngine = { navigateTo(NavRoutes.SIMULATION) },
+                                onOpenProfiles = { navigateTo(NavRoutes.PROFILES) },
+                                onOpenFocusSessions = { navigateTo(NavRoutes.FOCUS) },
+                                onOpenRoutineLog = { navigateTo(NavRoutes.ROUTINE_LOG) }
+                            )
+                        }
+                        composable(NavRoutes.ASSISTANT) {
+                            AssistantScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel,
+                                onEditProposalInBuilder = { navigateTo(NavRoutes.ruleBuilderRoute()) }
+                            )
+                        }
+                        composable(NavRoutes.SETTINGS) {
+                            SettingsScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel,
+                                onNavigate = { route -> navigateTo(route) }
+                            )
+                        }
+                        composable(NavRoutes.CONTACTS) {
+                            ContactsScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.ACTIVITY) {
+                            ActivityScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.ROUTINE_LOG) {
+                            RoutineLogScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.ADVANCED) {
+                            AdvancedScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.PROFILES) {
+                            ProfilesScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.FOCUS) {
+                            FocusSessionsScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(NavRoutes.SIMULATION) {
+                            SimulationEngineScreen(state = state, strings = strings, viewModel = viewModel)
+                        }
+                        composable(
+                            route = "${NavRoutes.RULE_BUILDER}?routineId={routineId}",
+                            arguments = listOf(
+                                navArgument("routineId") {
+                                    type = NavType.StringType
+                                    nullable = true
+                                    defaultValue = null
+                                }
+                            )
+                        ) { entry ->
+                            val routineId = entry.arguments?.getString("routineId")
+                            val existing = state.routines.firstOrNull { it.id == routineId }
+                            RuleBuilderScreen(
+                                existingRoutine = existing,
+                                strings = strings,
+                                state = state,
+                                viewModel = viewModel,
+                                onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
+                                onSaved = { navController.popBackStack() }
+                            )
+                        }
                     }
                 }
             }

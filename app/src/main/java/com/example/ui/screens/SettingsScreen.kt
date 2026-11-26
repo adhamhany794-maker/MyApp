@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Restore
@@ -209,6 +210,21 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant
                 )
 
+                // Routine Log (Real phone control history)
+                SettingsNavRow(
+                    title = strings.screenRoutineLog,
+                    subtitle = strings.routineLogSubtitle,
+                    icon = Icons.Rounded.History,
+                    accentColor = StatusIndigo,
+                    onClick = { onNavigate(NavRoutes.ROUTINE_LOG) },
+                    modifier = Modifier.testTag("settings_routine_log_row")
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+
                 // Replay App Guide
                 SettingsNavRow(
                     title = strings.viewOnboardingBtn,
@@ -383,6 +399,58 @@ fun SettingsScreen(
                                     else strings.phoneControlDndToggleOnBtn
                                 )
                             }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = strings.exactAlarmStatusLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Surface(
+                            color = (if (phoneControl.canScheduleExactAlarms) StatusEmerald else StatusAmber).copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("phone_control_exact_alarm_status")
+                        ) {
+                            Text(
+                                text = if (phoneControl.canScheduleExactAlarms) strings.phoneControlAccessGranted else strings.phoneControlAccessDenied,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (phoneControl.canScheduleExactAlarms) StatusEmerald else StatusAmber,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (!phoneControl.canScheduleExactAlarms) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = strings.exactAlarmDeniedBanner,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val intent = viewModel.createExactAlarmSettingsIntent(context)
+                                runCatching { context.startActivity(intent) }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("phone_control_grant_exact_alarm_button")
+                        ) {
+                            Text(strings.exactAlarmGrantBtn)
                         }
                     }
                 }

@@ -21,7 +21,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,17 +37,16 @@ import com.example.models.TriggerType
 import com.example.simulation.AutomationSimulationEngine
 import com.example.simulation.SimulationEvent
 import com.example.ui.components.CompanionCard
+import com.example.ui.components.ExactTimeEntrySection
 import com.example.ui.components.FeatureExplanationDialog
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.components.SimulatedDemoBadge
-import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
 import com.example.utils.TimeUtils
 import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -134,14 +132,16 @@ fun ContextAwarenessScreen(
                         )
                     }
                 }
-                Text(
-                    text = TimeUtils.formatTime12h(ctx.simulatedHour, 0, strings.isArabic),
-                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = JetBrainsMonoFamily)
-                )
-                Slider(
-                    value = ctx.simulatedHour.toFloat(),
-                    onValueChange = { viewModel.updateSimulatedContext(hour = it.roundToInt().coerceIn(0, 23), minute = 0) },
-                    valueRange = 0f..23f
+                Spacer(Modifier.height(8.dp))
+                ExactTimeEntrySection(
+                    label = strings.timeContextTitle,
+                    hour24 = ctx.simulatedHour,
+                    minute = ctx.simulatedMinute,
+                    strings = strings,
+                    testTagPrefix = "ctx_time",
+                    onTimeChanged = { h, m ->
+                        viewModel.updateSimulatedContext(hour = h, minute = m)
+                    }
                 )
             }
         }

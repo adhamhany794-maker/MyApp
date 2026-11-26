@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -56,8 +57,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.text.format.DateFormat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.utils.RoutineTimeInputValidator
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -91,7 +95,8 @@ fun RoutinesScreen(
     onEditRoutine: (String) -> Unit,
     onOpenSimulationEngine: () -> Unit,
     onOpenProfiles: () -> Unit,
-    onOpenFocusSessions: () -> Unit
+    onOpenFocusSessions: () -> Unit,
+    onOpenRoutineLog: () -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf(RoutineStatusFilter.ALL) }
@@ -347,30 +352,42 @@ fun RoutinesScreen(
             }
         }
 
-        // Primary Add Routine CTA + Simulation Shortcut
+        // Primary Add Routine CTA + Simulation & Routine Log Shortcuts
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onCreateRoutine,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("create_routine_fab")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(strings.addRoutineBtn)
+                    Button(
+                        onClick = onCreateRoutine,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("create_routine_fab")
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.addRoutineBtn)
+                    }
+                    OutlinedButton(
+                        onClick = onOpenSimulationEngine,
+                        modifier = Modifier.testTag("open_simulation_engine_button")
+                    ) {
+                        Icon(Icons.Rounded.AutoMode, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.simulate)
+                    }
                 }
                 OutlinedButton(
-                    onClick = onOpenSimulationEngine,
-                    modifier = Modifier.testTag("open_simulation_engine_button")
+                    onClick = onOpenRoutineLog,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("open_routine_log_button")
                 ) {
-                    Icon(Icons.Rounded.AutoMode, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(strings.simulate)
+                    Text(strings.screenRoutineLog)
                 }
             }
         }
@@ -435,11 +452,29 @@ fun RoutinesScreen(
         }
 
         items(filteredRoutines, key = { it.id }) { routine ->
+            val context = LocalContext.current
+            val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
             val displayName = strings.localizedRoutineName(routine)
             val displayDesc = strings.localizedRoutineDescription(routine)
-            val triggerLabel = "${strings.triggerTypeLabel(routine.trigger.type)} • ${
-                TimeUtils.formatTime12h(routine.trigger.hour, routine.trigger.minute, strings.isArabic)
-            } (${strings.dayFilterLabel(routine.trigger.dayFilter, short = true)})"
+            val rangeLabel = RoutineTimeInputValidator.formatRoutineRange(
+                routine = routine,
+                isArabic = strings.isArabic,
+                is24Hour = is24Hour
+            )
+            val triggerTimeDisplay = rangeLabel ?: RoutineTimeInputValidator.formatTimeForSetting(
+                routine.trigger.hour,
+                routine.trigger.minute,
+                is24Hour,
+                strings.isArabic
+            )
+            val daysDisplay = if (routine.customDays.isNotEmpty()) {
+                routine.customDays.joinToString(", ") { strings.dayFilterLabel(it, short = true) }
+            } else {
+                strings.dayFilterLabel(routine.trigger.dayFilter, short = true)
+            }
+            val extraWindowsCount = routine.extraTimeWindows.size
+            val windowsSuffix = if (extraWindowsCount > 0) " (+$extraWindowsCount)" else ""
+            val triggerLabel = "${strings.triggerTypeLabel(routine.trigger.type)} • $triggerTimeDisplay$windowsSuffix ($daysDisplay)"
             val mainAction = routine.actions.firstOrNull()?.let { strings.actionTypeLabel(it.type) } ?: "-"
             var menuExpanded by remember { mutableStateOf(false) }
 
@@ -453,10 +488,27 @@ fun RoutinesScreen(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        ActiveStatusPill(
-                            text = if (routine.isEnabled) strings.activeLabel else strings.disabledLabel,
-                            isActive = routine.isEnabled
-                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            ActiveStatusPill(
+                                text = if (routine.isEnabled) strings.activeLabel else strings.disabledLabel,
+                                isActive = routine.isEnabled
+                            )
+                            if (routine.enableDoNotDisturb) {
+                                ActiveStatusPill(
+                                    text = strings.phoneControlDndStatusPrefix,
+                                    isActive = true
+                                )
+                            }
+                            if (routine.isOneTime) {
+                                ActiveStatusPill(
+                                    text = strings.oneTimeRoutineLabel,
+                                    isActive = false
+                                )
+                            }
+                        }
                         Text(
                             text = displayName,
                             style = MaterialTheme.typography.titleMedium,
@@ -480,19 +532,34 @@ fun RoutinesScreen(
                 }
 
                 Spacer(Modifier.height(10.dp))
-                AssistChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = if (strings.isArabic) "متى: $triggerLabel" else "WHEN: $triggerLabel",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("routine_when_${routine.id}")
+                ) {
+                    Text(
+                        text = if (strings.isArabic) "متى: $triggerLabel" else "WHEN: $triggerLabel",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    )
+                }
+                if (routine.skipDates.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${strings.skipDatesLabel}: ${routine.skipDates.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = (if (strings.isArabic) "الإجراء الرئيسي: " else "Action: ") + mainAction,
+                    text = (if (strings.isArabic) "الإجراء الرئيسي: " else "Action: ") + mainAction +
+                        (if (routine.enableDoNotDisturb) " • ${strings.phoneControlDndStatusPrefix}" else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary
                 )
@@ -583,9 +650,21 @@ fun RoutinesScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(displayDesc, style = MaterialTheme.typography.bodyMedium)
+                    val detailContext = LocalContext.current
+                    val detail24h = remember(detailContext) { DateFormat.is24HourFormat(detailContext) }
+                    val detailTime = RoutineTimeInputValidator.formatRoutineRange(
+                        routine = routine,
+                        isArabic = strings.isArabic,
+                        is24Hour = detail24h
+                    ) ?: RoutineTimeInputValidator.formatTimeForSetting(
+                        routine.trigger.hour,
+                        routine.trigger.minute,
+                        detail24h,
+                        strings.isArabic
+                    )
                     Text(
                         text = (if (strings.isArabic) "متى: " else "WHEN: ") +
-                            "${strings.triggerTypeLabel(routine.trigger.type)} (${TimeUtils.formatTime12h(routine.trigger.hour, routine.trigger.minute, strings.isArabic)}, ${strings.dayFilterLabel(routine.trigger.dayFilter)})",
+                            "${strings.triggerTypeLabel(routine.trigger.type)} ($detailTime، ${strings.dayFilterLabel(routine.trigger.dayFilter)})",
                         style = MaterialTheme.typography.labelLarge
                     )
                     Text(

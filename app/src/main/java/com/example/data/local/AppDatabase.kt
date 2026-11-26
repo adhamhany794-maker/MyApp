@@ -12,9 +12,10 @@ import androidx.room.RoomDatabase
         ContactEntity::class,
         ActivityEventEntity::class,
         FocusSessionEntity::class,
-        NotificationStatEntity::class
+        NotificationStatEntity::class,
+        RoutineLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activityEventDao(): ActivityEventDao
     abstract fun focusSessionDao(): FocusSessionDao
     abstract fun notificationStatDao(): NotificationStatDao
+    abstract fun routineLogDao(): RoutineLogDao
 
     companion object {
         @Volatile

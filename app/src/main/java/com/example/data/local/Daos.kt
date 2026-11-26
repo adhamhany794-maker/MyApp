@@ -23,6 +23,9 @@ interface ProfileDao {
     @Query("DELETE FROM smart_profiles WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("SELECT * FROM smart_profiles ORDER BY isDefault DESC, name ASC")
+    suspend fun getAllOnce(): List<ProfileEntity>
+
     @Query("DELETE FROM smart_profiles")
     suspend fun clearAll()
 }
@@ -43,6 +46,12 @@ interface RoutineDao {
 
     @Query("DELETE FROM smart_routines WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM smart_routines ORDER BY priority DESC, name ASC")
+    suspend fun getAllOnce(): List<RoutineEntity>
+
+    @Query("SELECT * FROM smart_routines WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): RoutineEntity?
 
     @Query("DELETE FROM smart_routines")
     suspend fun clearAll()
@@ -119,3 +128,16 @@ interface NotificationStatDao {
     @Query("DELETE FROM notification_stats")
     suspend fun clearAll()
 }
+
+@Dao
+interface RoutineLogDao {
+    @Query("SELECT * FROM routine_logs ORDER BY timestampMillis DESC")
+    fun observeAll(): Flow<List<RoutineLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: RoutineLogEntity)
+
+    @Query("DELETE FROM routine_logs")
+    suspend fun clearAll()
+}
+

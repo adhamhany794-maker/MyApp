@@ -252,6 +252,23 @@ abstract class AppStrings {
     abstract val saveRuleBtn: String
     abstract val errRuleNameRequired: String
     abstract val errRuleActionRequired: String
+    abstract val startTimeLabel: String
+    abstract val endTimeLabel: String
+    abstract val nowBtn: String
+    abstract val startsImmediatelyHint: String
+    abstract val endAtExactTimeLabel: String
+    abstract val endAfterDurationLabel: String
+    abstract val hourFieldLabel: String
+    abstract val minuteFieldLabel: String
+    abstract val amLabel: String
+    abstract val pmLabel: String
+    abstract val pickClockTimeDesc: String
+    abstract val switchToDialInputDesc: String
+    abstract val switchToKeyboardInputDesc: String
+    abstract val customDurationMinutesLabel: String
+    abstract val minutesUnitLabel: String
+    abstract val errInvalidMinutes: String
+    abstract val errDurationMinOne: String
 
     // Simulation Engine
     abstract val simSubtitle: String
@@ -447,6 +464,31 @@ abstract class AppStrings {
     abstract val phoneControlDndToggleOnBtn: String
     abstract val phoneControlDndToggleOffBtn: String
     abstract val phoneControlStarredNote: String
+
+    // Step 2: Routine Phone Control, Exact Alarms & Routine Log
+    abstract val screenRoutineLog: String
+    abstract val routineLogSubtitle: String
+    abstract val routineLogEmptyTitle: String
+    abstract val routineLogEmptyMsg: String
+    abstract val routineLogClearBtn: String
+    abstract val routineLogStartedBadge: String
+    abstract val routineLogEndedBadge: String
+    abstract val routineLogPermissionDeniedBadge: String
+    abstract val dndBannerTitle: String
+    abstract val dndBannerBody: String
+    abstract val exactAlarmStatusLabel: String
+    abstract val exactAlarmDeniedBanner: String
+    abstract val exactAlarmGrantBtn: String
+    abstract val dndEnableForRoutineLabel: String
+    abstract val dndEnableForRoutineHint: String
+    abstract val oneTimeRoutineLabel: String
+    abstract val oneTimeRoutineHint: String
+    abstract val skipDatesLabel: String
+    abstract val addSkipDateBtn: String
+    abstract val extraTimeWindowsLabel: String
+    abstract val addTimeWindowBtn: String
+    abstract val customDaysLabel: String
+    abstract val removeWindowDesc: String
 
     fun priorityTierLabel(priority: Int): String = when {
         priority >= 8 -> priorityHighLabel
@@ -893,6 +935,23 @@ private object EnglishAppStrings : AppStrings() {
     override val saveRuleBtn = "Save Routine"
     override val errRuleNameRequired = "Please enter a routine name."
     override val errRuleActionRequired = "Select at least one action before continuing."
+    override val startTimeLabel = "Start Time"
+    override val endTimeLabel = "End Time"
+    override val nowBtn = "Now"
+    override val startsImmediatelyHint = "Will start immediately when saved"
+    override val endAtExactTimeLabel = "Exact end time"
+    override val endAfterDurationLabel = "End after N minutes"
+    override val hourFieldLabel = "Hour"
+    override val minuteFieldLabel = "Minute"
+    override val amLabel = "AM"
+    override val pmLabel = "PM"
+    override val pickClockTimeDesc = "Pick time on clock"
+    override val switchToDialInputDesc = "Switch to clock dial"
+    override val switchToKeyboardInputDesc = "Switch to keyboard entry"
+    override val customDurationMinutesLabel = "Custom duration (minutes)"
+    override val minutesUnitLabel = "min"
+    override val errInvalidMinutes = "Minutes must be between 0 and 59."
+    override val errDurationMinOne = "Duration must be at least 1 minute."
     override val simSubtitle = "Test triggers, conditions, priority conflicts, and interruptions against live app state."
     override val simClockTitle = "1. Simulate Clock & Day Trigger"
     override val simEvaluateClockBtn = "Evaluate Time Trigger"
@@ -1053,7 +1112,7 @@ private object EnglishAppStrings : AppStrings() {
     override val keepCurrentStateBtn = "Keep current state"
     override val playgroundSubtitle = "One-tap interactive walkthroughs using live app state."
     override val phoneControlTitle = "Phone control"
-    override val phoneControlSubtitle = "Test real device ringer mode and Do Not Disturb access (not connected to routines yet)."
+    override val phoneControlSubtitle = "Connected to routines: real device ringer mode, Do Not Disturb, and exact alarm scheduling."
     override val phoneControlAccessStatusLabel = "Do Not Disturb access"
     override val phoneControlAccessGranted = "Granted"
     override val phoneControlAccessDenied = "Not granted"
@@ -1067,6 +1126,29 @@ private object EnglishAppStrings : AppStrings() {
     override val phoneControlDndToggleOnBtn = "Turn Do Not Disturb On"
     override val phoneControlDndToggleOffBtn = "Turn Do Not Disturb Off"
     override val phoneControlStarredNote = "Emergency / starred contacts remain allowed during Do Not Disturb."
+    override val screenRoutineLog = "Routine Log"
+    override val routineLogSubtitle = "History of real phone-control routine starts, ends, restored states, and permission alerts."
+    override val routineLogEmptyTitle = "No routine runs yet"
+    override val routineLogEmptyMsg = "When a scheduled or 'Now' routine starts or ends on your phone, it will be recorded here."
+    override val routineLogClearBtn = "Clear Log"
+    override val routineLogStartedBadge = "Started"
+    override val routineLogEndedBadge = "Ended"
+    override val routineLogPermissionDeniedBadge = "Permission needed"
+    override val dndBannerTitle = "Do Not Disturb access needed"
+    override val dndBannerBody = "A routine could not change your phone sound mode because Do Not Disturb access is not granted."
+    override val exactAlarmStatusLabel = "Exact alarms"
+    override val exactAlarmDeniedBanner = "Exact alarm permission is denied. Enable \"Alarms & reminders\" so routines trigger on time even when the app is closed."
+    override val exactAlarmGrantBtn = "Allow Exact Alarms"
+    override val dndEnableForRoutineLabel = "Turn on Do Not Disturb (DND)"
+    override val dndEnableForRoutineHint = "Also activates Android Do Not Disturb while keeping starred emergency contacts allowed."
+    override val oneTimeRoutineLabel = "One-time routine"
+    override val oneTimeRoutineHint = "Runs once for the next matching window, then disables automatically."
+    override val skipDatesLabel = "Skip dates"
+    override val addSkipDateBtn = "Add skip date"
+    override val extraTimeWindowsLabel = "Additional time windows"
+    override val addTimeWindowBtn = "Add time window"
+    override val customDaysLabel = "Or choose specific days"
+    override val removeWindowDesc = "Remove time window"
 }
 
 private object ArabicAppStrings : AppStrings() {
@@ -1282,6 +1364,23 @@ private object ArabicAppStrings : AppStrings() {
     override val saveRuleBtn = "حفظ القاعدة"
     override val errRuleNameRequired = "يرجى إدخال اسم الروتين."
     override val errRuleActionRequired = "اختر إجراءً واحداً على الأقل قبل المتابعة."
+    override val startTimeLabel = "وقت البداية"
+    override val endTimeLabel = "وقت النهاية"
+    override val nowBtn = "الآن"
+    override val startsImmediatelyHint = "سيبدأ الروتين فور الحفظ"
+    override val endAtExactTimeLabel = "وقت انتهاء محدد"
+    override val endAfterDurationLabel = "إنهاء بعد مدة (دقائق)"
+    override val hourFieldLabel = "الساعة"
+    override val minuteFieldLabel = "الدقائق"
+    override val amLabel = "ص"
+    override val pmLabel = "م"
+    override val pickClockTimeDesc = "اختيار الوقت من الساعة"
+    override val switchToDialInputDesc = "التبديل إلى قرص الساعة"
+    override val switchToKeyboardInputDesc = "التبديل إلى الإدخال الرقمي"
+    override val customDurationMinutesLabel = "مدة مخصصة (بالدقائق)"
+    override val minutesUnitLabel = "د"
+    override val errInvalidMinutes = "الدقائق يجب أن تكون بين 0 و 59"
+    override val errDurationMinOne = "المدة يجب أن تكون دقيقة واحدة على الأقل"
     override val simSubtitle = "اختبر المشغلات والشروط وتعارض الأولويات والمقاطعات على حالة التطبيق الحالية."
     override val simClockTitle = "1. محاكاة الوقت واليوم"
     override val simEvaluateClockBtn = "تقييم مشغّل الوقت"
@@ -1442,7 +1541,7 @@ private object ArabicAppStrings : AppStrings() {
     override val keepCurrentStateBtn = "الإبقاء على الحالة الحالية"
     override val playgroundSubtitle = "تجارب تفاعلية بضغطة واحدة متصلة بحالة التطبيق المباشرة."
     override val phoneControlTitle = "التحكم في الهاتف"
-    override val phoneControlSubtitle = "اختبر التحكم الحقيقي في وضع الرنين وعدم الإزعاج (غير مرتبط بالروتينات بعد)."
+    override val phoneControlSubtitle = "مرتبط بالروتينات: يغيّر وضع الرنين وعدم الإزعاج فعلياً مع دعم المنبهات الدقيقة."
     override val phoneControlAccessStatusLabel = "إذن الوصول لعدم الإزعاج"
     override val phoneControlAccessGranted = "مُصرّح به"
     override val phoneControlAccessDenied = "غير مُصرّح"
@@ -1456,4 +1555,27 @@ private object ArabicAppStrings : AppStrings() {
     override val phoneControlDndToggleOnBtn = "تشغيل عدم الإزعاج"
     override val phoneControlDndToggleOffBtn = "إيقاف عدم الإزعاج"
     override val phoneControlStarredNote = "يتم السماح لمكالمات ورسائل جهات الاتصال المميزة بنجمة (الطوارئ) أثناء عدم الإزعاج."
+    override val screenRoutineLog = "سجل الروتين"
+    override val routineLogSubtitle = "سجل أوقات بدء وانتهاء الروتينات الفعلية على الهاتف وما تم تطبيقه أو استعادته."
+    override val routineLogEmptyTitle = "لا توجد تشغيلات مسجلة بعد"
+    override val routineLogEmptyMsg = "عند بدء أو انتهاء أي روتين مجدول أو روتين يبدأ الآن، سيظهر الوقت والحالة المطبّقة هنا."
+    override val routineLogClearBtn = "مسح السجل"
+    override val routineLogStartedBadge = "بدأ"
+    override val routineLogEndedBadge = "انتهى"
+    override val routineLogPermissionDeniedBadge = "مطلوب إذن"
+    override val dndBannerTitle = "مطلوب إذن الوصول لعدم الإزعاج"
+    override val dndBannerBody = "تعذّر على الروتين تغيير وضع الهاتف لأن إذن الوصول إلى عدم الإزعاج غير ممنوح. يرجى منحه من الإعدادات."
+    override val exactAlarmStatusLabel = "المنبهات الدقيقة"
+    override val exactAlarmDeniedBanner = "إذن المنبهات الدقيقة غير مفعّل. يرجى السماح بإذن \"التنبيهات والتذكيرات\" حتى تعمل الروتينات في وقتها المحدد حتى عند إغلاق التطبيق."
+    override val exactAlarmGrantBtn = "السماح بالمنبهات الدقيقة"
+    override val dndEnableForRoutineLabel = "تفعيل وضع عدم الإزعاج (DND)"
+    override val dndEnableForRoutineHint = "يفعّل وضع عدم الإزعاج في أندرويد مع إبقاء جهات الطوارئ المميزة بنجمة مسموحة."
+    override val oneTimeRoutineLabel = "روتين لمرة واحدة"
+    override val oneTimeRoutineHint = "يعمل مرة واحدة في الفترة الزمنية القادمة ثم يتوقف تلقائياً."
+    override val skipDatesLabel = "تواريخ التخطي"
+    override val addSkipDateBtn = "إضافة تاريخ تخطي"
+    override val extraTimeWindowsLabel = "فترات زمنية إضافية"
+    override val addTimeWindowBtn = "إضافة فترة زمنية"
+    override val customDaysLabel = "أو اختر أياماً محددة"
+    override val removeWindowDesc = "حذف الفترة الزمنية"
 }

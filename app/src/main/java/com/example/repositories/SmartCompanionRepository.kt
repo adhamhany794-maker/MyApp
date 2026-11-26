@@ -13,6 +13,7 @@ import com.example.models.EventCategory
 import com.example.models.FocusSessionRecord
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
+import com.example.models.RoutineLogEntry
 import com.example.models.SimulationContextState
 import com.example.models.SmartProfile
 import com.example.models.SmartRoutine
@@ -45,6 +46,18 @@ class SmartCompanionRepository(
 
     val notificationStats: Flow<List<NotificationStat>> =
         db.notificationStatDao().observeAll().map { list -> list.map { it.toDomain() } }
+
+    val routineLogs: Flow<List<RoutineLogEntry>> =
+        db.routineLogDao().observeAll().map { list -> list.map { it.toDomain() } }
+
+    suspend fun getAllRoutinesOnce(): List<SmartRoutine> =
+        db.routineDao().getAllOnce().map { it.toDomain() }
+
+    suspend fun getRoutineById(id: String): SmartRoutine? =
+        db.routineDao().getById(id)?.toDomain()
+
+    suspend fun getAllProfilesOnce(): List<SmartProfile> =
+        db.profileDao().getAllOnce().map { it.toDomain() }
 
     suspend fun ensureSeeded() {
         if (db.profileDao().count() == 0) {
@@ -148,6 +161,14 @@ class SmartCompanionRepository(
         db.activityEventDao().clearAll()
     }
 
+    suspend fun addRoutineLog(entry: RoutineLogEntry) {
+        db.routineLogDao().insert(entry.toEntity())
+    }
+
+    suspend fun clearRoutineLogs() {
+        db.routineLogDao().clearAll()
+    }
+
     suspend fun resetAllDemoData(resetOnboarding: Boolean = false) {
         db.profileDao().clearAll()
         db.routineDao().clearAll()
@@ -155,6 +176,7 @@ class SmartCompanionRepository(
         db.activityEventDao().clearAll()
         db.focusSessionDao().clearAll()
         db.notificationStatDao().clearAll()
+        db.routineLogDao().clearAll()
 
         db.profileDao().upsertAll(DemoSeedData.defaultProfiles().map { it.toEntity() })
         db.routineDao().upsertAll(DemoSeedData.defaultRoutines().map { it.toEntity() })
