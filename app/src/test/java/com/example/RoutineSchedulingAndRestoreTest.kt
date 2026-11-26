@@ -123,7 +123,7 @@ class RoutineSchedulingAndRestoreTest {
         startMinute: Int = 0,
         endTime: String = "22:00",
         dayFilter: DayFilter = DayFilter.EVERY_DAY,
-        customDays: List<DayFilter> = emptyList(),
+        customDays: Set<DayFilter> = emptySet(),
         isOneTime: Boolean = false,
         skipDates: List<String> = emptyList(),
         extraTimeWindows: List<TimeWindow> = emptyList(),
@@ -220,7 +220,7 @@ class RoutineSchedulingAndRestoreTest {
             startHour = 9,
             startMinute = 30,
             endTime = "11:00",
-            customDays = listOf(DayFilter.MONDAY, DayFilter.THURSDAY)
+            customDays = setOf(DayFilter.MONDAY, DayFilter.THURSDAY)
         )
         val customEvents = RoutineAlarmCalculator.computeNextAlarms(customDaysRoutine, fridayAfternoon, tz)
         assertEquals(
@@ -324,7 +324,7 @@ class RoutineSchedulingAndRestoreTest {
             name = "اجتماع هادئ",
             soundMode = SoundMode.SILENT,
             enableDoNotDisturb = true,
-            exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Starred", "الطوارئ"))
+            exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Starred"))
         )
 
         val startOutcome = controller.applyRoutineStart(
