@@ -513,12 +513,10 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
 
-                    // Manual Override & Restore Previous State
-                    val activeName = state.activeProfile?.let { strings.localizedProfileName(it) } ?: "Personal"
-                    val soundName = strings.soundModeLabel(state.preferences.simulatedSoundMode)
-                    val prev = state.preferences.previousSnapshot
-                    val prevProfile = state.profiles.firstOrNull { it.id == prev.activeProfileId }
-                    val prevName = prevProfile?.let { strings.localizedProfileName(it) } ?: "Personal"
+                    // Manual Control & Rollback (Real Device)
+                    val currentRinger = state.phoneControl.currentRingerMode
+                    val activeBackup = state.activePhoneBackup
+                    val prevRinger = activeBackup?.previousRingerMode ?: currentRinger
 
                     Text(strings.manualOverrideTitle, style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(2.dp))
@@ -529,7 +527,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "${strings.currentSimStatePrefix}: $activeName • $soundName",
+                        text = "${strings.phoneControlCurrentRingerPrefix}: ${strings.soundModeLabel(currentRinger)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -540,16 +538,26 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         SoundMode.entries.forEach { mode ->
-                            OutlinedButton(
-                                onClick = { viewModel.setSimulatedSoundMode(mode, "Settings Override") }
-                            ) {
-                                Text(strings.soundModeLabel(mode))
+                            val isActive = currentRinger == mode
+                            if (isActive) {
+                                Button(
+                                    onClick = { viewModel.setRealManualRingerMode(mode) }
+                                ) {
+                                    Text(strings.soundModeLabel(mode))
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { viewModel.setRealManualRingerMode(mode) }
+                                ) {
+                                    Text(strings.soundModeLabel(mode))
+                                }
                             }
                         }
                     }
                     Spacer(Modifier.height(10.dp))
                     Button(
-                        onClick = { viewModel.restorePreviousPhoneState() },
+                        onClick = { viewModel.restoreRealPreviousState() },
+                        enabled = activeBackup != null,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -557,7 +565,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("${strings.restorePrevStatePrefix} ($prevName • ${strings.soundModeLabel(prev.soundMode)})")
+                        Text(if (activeBackup != null) "${strings.restorePrevStatePrefix} (${strings.soundModeLabel(prevRinger)})" else strings.restorePrevStatePrefix)
                     }
 
                     HorizontalDivider(
@@ -622,8 +630,26 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
 
-                    // Emergency Access Test
-                    Text(strings.emergencyTestTitle, style = MaterialTheme.typography.titleSmall)
+                    // Emergency Access Simulation (Clearly labeled as a simulation)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(strings.emergencyTestTitle, style = MaterialTheme.typography.titleSmall)
+                        Surface(
+                            color = StatusIndigo.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (strings.isArabic) "محاكاة" else "Simulation",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusIndigo,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(2.dp))
                     Text(
                         strings.emergencyTestExplain,

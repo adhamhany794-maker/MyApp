@@ -16,6 +16,7 @@ import com.example.automation.RoutineAlarmCalculator
 import com.example.automation.RoutineAlarmSchedulerGateway
 import com.example.automation.RoutinePhoneController
 import com.example.automation.RoutineStateBackupStore
+import com.example.automation.SavedPhoneBackup
 import com.example.data.AppPreferences
 import com.example.models.ActionType
 import com.example.models.ActiveFocusSession
@@ -32,6 +33,7 @@ import com.example.models.InterruptionType
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
 import com.example.models.RoutineLogEntry
+import com.example.models.RoutineLogEventType
 import com.example.models.RoutineProposal
 import com.example.models.RuleAction
 import com.example.models.RuleException
@@ -110,7 +112,8 @@ data class SmartCompanionUiState(
     val routineLogs: List<RoutineLogEntry> = emptyList(),
     val dndPermissionAlertRoutine: String? = null,
     val exactAlarmDeniedNotice: Boolean = false,
-    val savePermissionDialog: SavePermissionDialogState? = null
+    val savePermissionDialog: SavePermissionDialogState? = null,
+    val activePhoneBackup: SavedPhoneBackup? = null
 ) {
     val activeProfile: SmartProfile?
         get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
@@ -143,6 +146,7 @@ class SmartCompanionViewModel(
     private val _dndPermissionAlertRoutine = MutableStateFlow<String?>(null)
     private val _exactAlarmDeniedNotice = MutableStateFlow(false)
     private val _savePermissionDialog = MutableStateFlow<SavePermissionDialogState?>(null)
+    private val _activePhoneBackup = MutableStateFlow<SavedPhoneBackup?>(routineBackupStore.getBackup())
 
     private var focusTimerJob: Job? = null
 
@@ -189,9 +193,10 @@ class SmartCompanionViewModel(
     private val alertDataFlow = combine(
         _dndPermissionAlertRoutine,
         _exactAlarmDeniedNotice,
-        _savePermissionDialog
-    ) { dndAlert, exactDenied, saveDialog ->
-        AlertBundle(dndAlert, exactDenied, saveDialog)
+        _savePermissionDialog,
+        _activePhoneBackup
+    ) { dndAlert, exactDenied, saveDialog, phoneBackup ->
+        AlertBundle(dndAlert, exactDenied, saveDialog, phoneBackup)
     }
 
     val uiState: StateFlow<SmartCompanionUiState> = combine(
@@ -224,7 +229,8 @@ class SmartCompanionViewModel(
             routineLogs = extra.routineLogs,
             dndPermissionAlertRoutine = alerts.dndAlert,
             exactAlarmDeniedNotice = alerts.exactDenied,
-            savePermissionDialog = alerts.saveDialog
+            savePermissionDialog = alerts.saveDialog,
+            activePhoneBackup = alerts.phoneBackup
         )
     }.stateIn(
         scope = viewModelScope,
@@ -438,6 +444,16 @@ class SmartCompanionViewModel(
                 soundMode = current.preferences.simulatedSoundMode,
                 isAutomationPaused = newPaused
             )
+            if (newPaused) {
+                val backup = routineBackupStore.getBackup()
+                backup?.activeRoutineIds?.toList()?.forEach { id ->
+                    val r = repository.getAllRoutinesOnce().firstOrNull { it.id == id }
+                    val name = r?.name ?: id
+                    val outcome = routinePhoneController.applyRoutineEnd(id, name, isArabic())
+                    repository.addRoutineLog(outcome.logEntry)
+                }
+                _activePhoneBackup.value = routineBackupStore.getBackup()
+            }
             repository.logEvent(
                 title = if (newPaused) "Global Automation Paused" else "Automation Resumed",
                 category = EventCategory.AUTOMATION,
@@ -788,6 +804,12 @@ class SmartCompanionViewModel(
             repository.upsertRoutine(updated)
             if (!updated.isEnabled) {
                 alarmScheduler.cancelRoutineAlarms(updated.id)
+                val backup = routineBackupStore.getBackup()
+                if (backup != null && backup.activeRoutineIds.contains(updated.id)) {
+                    val outcome = routinePhoneController.applyRoutineEnd(updated.id, updated.name, isArabic())
+                    repository.addRoutineLog(outcome.logEntry)
+                    _activePhoneBackup.value = routineBackupStore.getBackup()
+                }
             }
             val exactDenied = rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
@@ -894,6 +916,7 @@ class SmartCompanionViewModel(
             applyEngineOutput(output, showCompletionBanner = false)
 
             if (realOutcome.success) {
+                _activePhoneBackup.value = routineBackupStore.getBackup()
                 showBanner(
                     output.inAppNotice
                         ?: if (isArabic()) "تم تفعيل '${routine.name}' على الهاتف" else "${routine.name} activated"
@@ -910,6 +933,104 @@ class SmartCompanionViewModel(
                     failureNote = realOutcome.logEntry.note
                 )
             }
+        }
+    }
+
+    fun setRealManualRingerMode(mode: SoundMode) {
+        viewModelScope.launch {
+            val permState = phoneControlManager.refreshPermissionAndDeviceState()
+            if (!permState.hasDndAccess) {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = if (isArabic()) "التحكم اليدوي" else "Manual Control",
+                    missingDndAccess = true,
+                    missingExactAlarm = false
+                )
+                return@launch
+            }
+            val backup = routineBackupStore.getBackup()
+            if (backup == null) {
+                routineBackupStore.onRoutineStarted(
+                    routineId = "manual_override",
+                    currentRingerMode = permState.currentRingerMode,
+                    currentInterruptionFilter = permState.currentInterruptionFilter,
+                    timestampMillis = System.currentTimeMillis()
+                )
+                _activePhoneBackup.value = routineBackupStore.getBackup()
+            }
+            val res = phoneControlManager.applyRingerMode(mode)
+            if (res.success) {
+                val msg = if (isArabic()) "تم تطبيق وضع الرنين: ${mode.arabicName}" else "Applied ringer mode: ${mode.displayName}"
+                showBanner(msg)
+                repository.addRoutineLog(
+                    RoutineLogEntry(
+                        id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                        routineId = "manual_override",
+                        routineName = if (isArabic()) "التحكم اليدوي" else "Manual Control",
+                        eventType = RoutineLogEventType.STARTED,
+                        timestampMillis = System.currentTimeMillis(),
+                        ringerMode = mode,
+                        dndEnabled = null,
+                        interruptionFilter = phoneControlManager.currentInterruptionFilter(),
+                        note = msg
+                    )
+                )
+            } else {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = if (isArabic()) "التحكم اليدوي" else "Manual Control",
+                    missingDndAccess = res.permissionRequired,
+                    missingExactAlarm = false,
+                    realChangeFailed = true,
+                    failureNote = if (isArabic()) "تعذر تطبيق وضع الرنين" else "Failed to apply ringer mode"
+                )
+            }
+        }
+    }
+
+    fun restoreRealPreviousState() {
+        viewModelScope.launch {
+            val backup = routineBackupStore.getBackup()
+            if (backup == null) {
+                showBanner(if (isArabic()) "لا توجد حالة سابقة محفوظة للاستعادة" else "No previous saved state to restore")
+                return@launch
+            }
+            val stateNow = phoneControlManager.refreshPermissionAndDeviceState()
+            if (!stateNow.hasDndAccess) {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = if (isArabic()) "استعادة الحالة" else "Restore State",
+                    missingDndAccess = true,
+                    missingExactAlarm = false
+                )
+                return@launch
+            }
+            val res = phoneControlManager.restoreDeviceState(
+                ringerMode = backup.previousRingerMode,
+                interruptionFilter = backup.previousInterruptionFilter
+            )
+            routineBackupStore.clearAll()
+            _activePhoneBackup.value = null
+            val dndOn = backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
+                backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+            val msg = if (isArabic()) {
+                val dndStr = if (dndOn) "عدم الإزعاج مفعّل" else "عدم الإزعاج متوقف"
+                "تمت استعادة الحالة السابقة: ${backup.previousRingerMode.arabicName} • $dndStr"
+            } else {
+                val dndStr = if (dndOn) "DND On" else "DND Off"
+                "Restored previous state: ${backup.previousRingerMode.displayName} • $dndStr"
+            }
+            showBanner(msg)
+            repository.addRoutineLog(
+                RoutineLogEntry(
+                    id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                    routineId = "manual_override",
+                    routineName = if (isArabic()) "استعادة الحالة" else "Restore State",
+                    eventType = RoutineLogEventType.ENDED,
+                    timestampMillis = System.currentTimeMillis(),
+                    ringerMode = backup.previousRingerMode,
+                    dndEnabled = dndOn,
+                    interruptionFilter = backup.previousInterruptionFilter,
+                    note = msg
+                )
+            )
         }
     }
 
@@ -1962,7 +2083,8 @@ class SmartCompanionViewModel(
     private data class AlertBundle(
         val dndAlert: String?,
         val exactDenied: Boolean,
-        val saveDialog: SavePermissionDialogState?
+        val saveDialog: SavePermissionDialogState?,
+        val phoneBackup: SavedPhoneBackup?
     )
 
     class Factory(

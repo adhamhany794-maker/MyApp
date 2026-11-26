@@ -785,4 +785,60 @@ class RoutineSchedulingAndRestoreTest {
             db.close()
         }
     }
+
+    @Test
+    fun `manual ringer mode change changes phone ringer and saves previous state backup`() {
+        val gateway = FakePhoneControlGateway(granted = true, ringerMode = SoundMode.SOUND)
+        val manager = PhoneControlManager(gateway)
+        val backupStore = InMemoryRoutineStateBackupStore()
+
+        assertNull(backupStore.getBackup())
+        val permState = manager.refreshPermissionAndDeviceState()
+        backupStore.onRoutineStarted("manual_override", permState.currentRingerMode, permState.currentInterruptionFilter, System.currentTimeMillis())
+        val res = manager.applyRingerMode(SoundMode.SILENT)
+
+        assertTrue(res.success)
+        assertEquals(SoundMode.SILENT, gateway.ringerMode)
+        assertNotNull(backupStore.getBackup())
+        assertEquals(SoundMode.SOUND, backupStore.getBackup()?.previousRingerMode)
+    }
+
+    @Test
+    fun `restore previous state restores saved state on phone and clears backup`() {
+        val gateway = FakePhoneControlGateway(granted = true, ringerMode = SoundMode.SILENT)
+        val manager = PhoneControlManager(gateway)
+        val backupStore = InMemoryRoutineStateBackupStore()
+
+        backupStore.onRoutineStarted("manual_override", SoundMode.SOUND, NotificationManager.INTERRUPTION_FILTER_ALL, System.currentTimeMillis())
+        val backup = backupStore.getBackup()
+        assertNotNull(backup)
+
+        val res = manager.restoreDeviceState(backup!!.previousRingerMode, backup.previousInterruptionFilter)
+        backupStore.clearAll()
+
+        assertTrue(res.success)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertNull(backupStore.getBackup())
+    }
+
+    @Test
+    fun `disable routine while active restores previous phone state`() {
+        val gateway = FakePhoneControlGateway(granted = true, ringerMode = SoundMode.SOUND, interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL)
+        val manager = PhoneControlManager(gateway)
+        val backupStore = InMemoryRoutineStateBackupStore()
+        val controller = RoutinePhoneController(manager, backupStore)
+
+        val routine = buildRoutine(id = "r_active_disable", soundMode = SoundMode.VIBRATE, enableDoNotDisturb = true)
+        val startOutcome = controller.applyRoutineStart(routine, emptyList(), isArabic = true, timestampMillis = 1000L)
+        assertTrue(startOutcome.success)
+        assertEquals(SoundMode.VIBRATE, gateway.ringerMode)
+        assertNotNull(backupStore.getBackup())
+
+        // Disabling active routine triggers applyRoutineEnd
+        val endOutcome = controller.applyRoutineEnd(routine.id, routine.name, isArabic = true, timestampMillis = 2000L)
+        assertTrue(endOutcome.success)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, gateway.interruptionFilter)
+        assertNull(backupStore.getBackup())
+    }
 }
