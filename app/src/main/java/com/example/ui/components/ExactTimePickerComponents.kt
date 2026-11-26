@@ -44,14 +44,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.example.models.AppLanguage
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.SmartCompanionTheme
 import com.example.utils.AppStrings
 import com.example.utils.RoutineTimeInputValidator
 import com.example.utils.TimeUtils
+import com.example.utils.stringsFor
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -119,26 +126,33 @@ fun ExactTimeEntrySection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge
-                )
-                Text(
-                    text = RoutineTimeInputValidator.formatTimeForSetting(
-                        hour24 = hour24,
-                        minute = minute,
-                        is24Hour = is24Hour,
-                        isArabic = strings.isArabic
-                    ),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = JetBrainsMonoFamily,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.testTag("${testTagPrefix}_formatted_time")
-                )
-            }
+            val formattedTime = RoutineTimeInputValidator.formatTimeForSetting(
+                hour24 = hour24,
+                minute = minute,
+                is24Hour = is24Hour,
+                isArabic = strings.isArabic
+            )
+            val timeColor = MaterialTheme.colorScheme.primary
+
+            Text(
+                text = buildAnnotatedString {
+                    append(label)
+                    append("  ")
+                    withStyle(
+                        SpanStyle(
+                            color = timeColor,
+                            fontFamily = JetBrainsMonoFamily,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    ) {
+                        append(formattedTime)
+                    }
+                },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .testTag("${testTagPrefix}_formatted_time")
+            )
             if (trailingAction != null) {
                 trailingAction()
             }
@@ -409,3 +423,34 @@ fun DurationMinutesSelector(
         }
     }
 }
+
+@Preview(name = "Arabic RTL - FontScale 1.0", locale = "ar", fontScale = 1.0f, showBackground = true)
+@Composable
+fun ExactTimeEntrySectionArabicPreview10() {
+    SmartCompanionTheme {
+        ExactTimeEntrySection(
+            label = "وقت البداية",
+            hour24 = 15,
+            minute = 40,
+            strings = stringsFor(AppLanguage.ARABIC),
+            testTagPrefix = "start_time",
+            onTimeChanged = { _, _ -> }
+        )
+    }
+}
+
+@Preview(name = "Arabic RTL - FontScale 1.3", locale = "ar", fontScale = 1.3f, showBackground = true)
+@Composable
+fun ExactTimeEntrySectionArabicPreview13() {
+    SmartCompanionTheme {
+        ExactTimeEntrySection(
+            label = "وقت البداية",
+            hour24 = 15,
+            minute = 40,
+            strings = stringsFor(AppLanguage.ARABIC),
+            testTagPrefix = "start_time",
+            onTimeChanged = { _, _ -> }
+        )
+    }
+}
+

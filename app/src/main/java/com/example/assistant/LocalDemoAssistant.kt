@@ -189,16 +189,16 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         // 6. Natural-language Routine Creation Proposals & Multi-turn Draft Merging (EN & AR)
         val hasDraft = state.pendingRoutineDraft != null
         if (isRoutineCreationIntent(lower) || hasDraft) {
-            val extractedHours = RoutineTimeParser.extractTimeHours(lower)
-            val timeRange = RoutineTimeParser.parseTimeRange(lower)
+            val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
+            val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
             val isSleep = lower.contains("sleep") || lower.contains("sleeping") || lower.contains("bed") || lower.contains("نوم") || lower.contains("ليل") || lower.contains("بليل")
             val isStudy = lower.contains("study") || lower.contains("studying") || lower.contains("دراسة")
             val isUniversity = lower.contains("university") || lower.contains("campus") || lower.contains("جامعة")
             val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
-            val hasStartAndEnd = timeRange != null || extractedHours.size >= 2
+            val hasStartAndEnd = detailedRange != null || extractedPoints.size >= 2
             val hasPresetDefaults = isSleep || isStudy || isUniversity || isWork || hasStartAndEnd
 
-            if (extractedHours.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null && !hasStartAndEnd) {
+            if (extractedPoints.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null && !hasStartAndEnd) {
                 val text = if (isArabic) {
                     "فهمت طلبك لإنشاء الروتين. ما هي أوقات البداية والنهاية (مثلاً من 8 إلى 11)؟"
                 } else {
@@ -308,19 +308,43 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             lower.contains("bed") || lower.contains("نوم") || lower.contains("ليل") || lower.contains("بليل")
         val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
 
-        val timeRange = parseTimeRange(lower, isArabic)
-        val startHour = when {
-            timeRange != null -> timeRange.first
-            isSleep -> 23
-            isStudy -> 18
-            isUniversity -> 9
-            isWork -> 9
-            else -> 20
-        }
-        val endHour = when {
-            timeRange != null -> timeRange.second
-            isSleep -> 7
-            else -> (startHour + 2) % 24
+        val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
+        val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
+
+        val startHour: Int
+        val startMinute: Int
+        val endHour: Int
+        val endMinute: Int
+
+        if (detailedRange != null) {
+            startHour = detailedRange.startHour
+            startMinute = detailedRange.startMinute
+            endHour = detailedRange.endHour
+            endMinute = detailedRange.endMinute
+        } else if (extractedPoints.isNotEmpty()) {
+            startHour = extractedPoints.first().hour24
+            startMinute = extractedPoints.first().minute
+            if (extractedPoints.size >= 2) {
+                endHour = extractedPoints[1].hour24
+                endMinute = extractedPoints[1].minute
+            } else {
+                endHour = if (isSleep) 7 else ((startHour + 2) % 24)
+                endMinute = startMinute
+            }
+        } else {
+            startHour = when {
+                isSleep -> 23
+                isStudy -> 18
+                isUniversity -> 9
+                isWork -> 9
+                else -> 20
+            }
+            startMinute = 0
+            endHour = when {
+                isSleep -> 7
+                else -> (startHour + 2) % 24
+            }
+            endMinute = 0
         }
 
         val dayFilter = when {
@@ -372,14 +396,14 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             }
         }
 
-        val startLabel = TimeUtils.formatTime12h(startHour, 0, isArabic)
-        val endLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)
+        val startLabel = TimeUtils.formatTime12h(startHour, startMinute, isArabic)
+        val endLabel = TimeUtils.formatTime12h(endHour, endMinute, isArabic)
 
         val trigger = when {
             isUniversity -> RuleTrigger(
                 type = TriggerType.LOCATION_ENTERED,
                 hour = startHour,
-                minute = 0,
+                minute = startMinute,
                 dayFilter = dayFilter,
                 location = SimulatedLocation.UNIVERSITY,
                 summary = if (isArabic) "الموقع المحاكى: الجامعة" else "Simulated location: University (${dayFilter.label})"
@@ -387,7 +411,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             lower.contains("while i'm studying") || lower.contains("while studying") || lower.contains("أثناء الدراسة") -> RuleTrigger(
                 type = TriggerType.ACTIVITY_STARTED,
                 hour = startHour,
-                minute = 0,
+                minute = startMinute,
                 dayFilter = dayFilter,
                 activity = SimulatedActivity.STUDYING,
                 summary = if (isArabic) "النشاط المحاكى: الدراسة" else "Simulated activity: Studying"
@@ -395,7 +419,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             else -> RuleTrigger(
                 type = TriggerType.SPECIFIC_TIME,
                 hour = startHour,
-                minute = 0,
+                minute = startMinute,
                 dayFilter = dayFilter,
                 summary = if (isArabic) {
                     "يومياً من $startLabel إلى $endLabel"
@@ -478,36 +502,45 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         // 1. Explicit sound mode in user message overrides draft mode
         val effectiveSoundMode = explicitMode ?: draftSoundMode
 
-        val timeRange = RoutineTimeParser.parseTimeRange(lower)
+        val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
+        val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
         val isEvening = lower.contains("مساء") || lower.contains("pm") || lower.contains("evening") || lower.contains("بليل") || lower.contains("ليل") || lower.trim() == "م"
         val isMorning = lower.contains("صباح") || lower.contains("صبح") || lower.contains("am") || lower.contains("morning") || lower.trim() == "ص"
 
-        val existingDraftHours = RoutineTimeParser.extractTimeHours(existingDraft.scheduleStartTime + " " + existingDraft.scheduleEndTime)
-        var startHour = existingDraftHours.firstOrNull() ?: existingDraft.trigger.hour
-        var endHour = if (existingDraftHours.size >= 2) existingDraftHours[1] else ((startHour + 3) % 24)
+        val existingDraftPoints = RoutineTimeParser.extractTimePoints(existingDraft.scheduleStartTime + " " + existingDraft.scheduleEndTime)
+        var startHour = existingDraftPoints.firstOrNull()?.hour24 ?: existingDraft.trigger.hour
+        var startMinute = existingDraftPoints.firstOrNull()?.minute ?: existingDraft.trigger.minute
+        var endHour = if (existingDraftPoints.size >= 2) existingDraftPoints[1].hour24 else ((startHour + 3) % 24)
+        var endMinute = if (existingDraftPoints.size >= 2) existingDraftPoints[1].minute else startMinute
 
-        if (timeRange != null) {
+        if (detailedRange != null) {
             // 2. Explicit start and end times in user message completely override draft times
-            startHour = timeRange.first
-            endHour = timeRange.second
-        } else {
-            val extracted = RoutineTimeParser.extractTimeHours(lower)
-            if (extracted.isNotEmpty()) {
-                startHour = extracted.first()
-                endHour = if (extracted.size >= 2) extracted[1] else (startHour + 3) % 24
+            startHour = detailedRange.startHour
+            startMinute = detailedRange.startMinute
+            endHour = detailedRange.endHour
+            endMinute = detailedRange.endMinute
+        } else if (extractedPoints.isNotEmpty()) {
+            startHour = extractedPoints.first().hour24
+            startMinute = extractedPoints.first().minute
+            if (extractedPoints.size >= 2) {
+                endHour = extractedPoints[1].hour24
+                endMinute = extractedPoints[1].minute
             } else {
-                if (isEvening && !isMorning) {
-                    if (startHour < 12) startHour += 12
-                    if (endHour < 12) endHour += 12
-                } else if (isMorning && !isEvening) {
-                    if (startHour == 12) startHour = 0 else if (startHour > 12) startHour -= 12
-                    if (endHour == 12) endHour = 0 else if (endHour > 12) endHour -= 12
-                }
+                endHour = (startHour + 3) % 24
+                endMinute = startMinute
+            }
+        } else {
+            if (isEvening && !isMorning) {
+                if (startHour < 12) startHour += 12
+                if (endHour < 12) endHour += 12
+            } else if (isMorning && !isEvening) {
+                if (startHour == 12) startHour = 0 else if (startHour > 12) startHour -= 12
+                if (endHour == 12) endHour = 0 else if (endHour > 12) endHour -= 12
             }
         }
 
-        val startLabel = TimeUtils.formatTime12h(startHour, 0, isArabic)
-        val endLabel = TimeUtils.formatTime12h(endHour, 0, isArabic)
+        val startLabel = TimeUtils.formatTime12h(startHour, startMinute, isArabic)
+        val endLabel = TimeUtils.formatTime12h(endHour, endMinute, isArabic)
 
         val triggerSummary = if (isArabic) {
             "يومياً من $startLabel إلى $endLabel"
@@ -530,13 +563,13 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             }
         }
 
-        val profileId = if (timeRange != null || explicitMode != null) {
+        val profileId = if (detailedRange != null || explicitMode != null) {
             baseProposal.routine.targetProfileId ?: "profile_study"
         } else {
             existingDraft.targetProfileId ?: "profile_study"
         }
 
-        val routineName = if (timeRange != null) {
+        val routineName = if (detailedRange != null) {
             baseProposal.routine.name
         } else {
             existingDraft.name
@@ -544,7 +577,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
 
         val updatedTrigger = baseProposal.routine.trigger.copy(
             hour = startHour,
-            minute = 0,
+            minute = startMinute,
             summary = triggerSummary
         )
 

@@ -236,23 +236,27 @@ object RoutineJsonValidator {
                 val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
                 val startParsed = parseTime24(startStr)
                 val endParsed = parseTime24(endStr)
-                val promptTimeRange = RoutineTimeParser.parseTimeRange(originalPrompt)
+                val promptDetailedRange = RoutineTimeParser.parseDetailedTimeRange(originalPrompt)
 
-                val shouldUsePromptTimes = promptTimeRange != null && (
+                val shouldUsePromptTimes = promptDetailedRange != null && (
                     startParsed == null ||
                         endParsed == null ||
-                        startParsed == endParsed ||
-                        (startParsed.first % 12) != (promptTimeRange.first % 12) ||
-                        (endParsed.first % 12) != (promptTimeRange.second % 12) ||
+                        (startParsed.first == endParsed.first && startParsed.second == endParsed.second) ||
+                        (startParsed.first % 12) != (promptDetailedRange.startHour % 12) ||
+                        (endParsed.first % 12) != (promptDetailedRange.endHour % 12) ||
                         RoutineTimeParser.hasExplicitPeriod(originalPrompt)
                     )
 
-                if (shouldUsePromptTimes && promptTimeRange != null && promptTimeRange.first != promptTimeRange.second) {
-                    startHour = promptTimeRange.first
-                    startMinute = 0
-                    endHour = promptTimeRange.second
-                    endMinute = 0
-                } else if (startParsed != null && endParsed != null && startParsed != endParsed) {
+                if (shouldUsePromptTimes && promptDetailedRange != null &&
+                    !(promptDetailedRange.startHour == promptDetailedRange.endHour && promptDetailedRange.startMinute == promptDetailedRange.endMinute)
+                ) {
+                    startHour = promptDetailedRange.startHour
+                    startMinute = promptDetailedRange.startMinute
+                    endHour = promptDetailedRange.endHour
+                    endMinute = promptDetailedRange.endMinute
+                } else if (startParsed != null && endParsed != null &&
+                    !(startParsed.first == endParsed.first && startParsed.second == endParsed.second)
+                ) {
                     startHour = startParsed.first
                     startMinute = startParsed.second
                     endHour = endParsed.first

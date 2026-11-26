@@ -681,14 +681,29 @@ abstract class AppStrings {
     } else t.label
 
     fun localizedProfileName(profile: SmartProfile): String {
-        if (!isArabic) return profile.name
-        return when (profile.id) {
+        return localizedProfileName(profile.id, profile.name)
+    }
+
+    fun localizedProfileName(id: String, fallbackName: String = ""): String {
+        if (!isArabic) return fallbackName.ifBlank { id }
+        return when (id) {
             "profile_study" -> "الدراسة"
             "profile_work" -> "العمل"
             "profile_sleep" -> "النوم"
             "profile_personal" -> "شخصي"
             "profile_custom" -> "تركيز مخصص"
-            else -> profile.name
+            else -> when (fallbackName.trim().lowercase()) {
+                "personal" -> "شخصي"
+                "sleep" -> "النوم"
+                "study" -> "الدراسة"
+                "work" -> "العمل"
+                "custom" -> "تركيز مخصص"
+                "study (silent)" -> "الدراسة (صامت)"
+                "work (vibrate)" -> "العمل (اهتزاز)"
+                "personal (sound)" -> "شخصي (صوت)"
+                "sleep (silent)" -> "النوم (صامت)"
+                else -> fallbackName
+            }
         }
     }
 
@@ -705,14 +720,25 @@ abstract class AppStrings {
     }
 
     fun localizedRoutineName(routine: SmartRoutine): String {
-        if (!isArabic) return routine.name
-        return when (routine.id) {
+        return localizedRoutineName(routine.id, routine.name)
+    }
+
+    fun localizedRoutineName(id: String, fallbackName: String = ""): String {
+        if (!isArabic) return fallbackName.ifBlank { id }
+        return when (id) {
             "routine_study_time" -> "وقت الدراسة"
             "routine_sleep_schedule" -> "جدول النوم"
             "routine_work_hours" -> "ساعات العمل"
             "routine_personal_time" -> "الوقت الشخصي"
             "routine_evening_unwind" -> "الاسترخاء المسائي (تجربة تعارض)"
-            else -> routine.name
+            else -> when (fallbackName.trim().lowercase()) {
+                "study time" -> "وقت الدراسة"
+                "sleep schedule" -> "جدول النوم"
+                "work hours" -> "ساعات العمل"
+                "personal time" -> "الوقت الشخصي"
+                "evening unwind" -> "الاسترخاء المسائي"
+                else -> fallbackName
+            }
         }
     }
 
@@ -865,7 +891,7 @@ private object EnglishAppStrings : AppStrings() {
     override val activeFocusBannerPaused = "Focus Paused"
     override val activeFocusBannerRunning = "Focus Active"
     override val distractionsBlockedSuffix = "simulated distractions blocked"
-    override val routinesPageExplain = "Routines switch your simulated profile and sound automatically when triggers match."
+    override val routinesPageExplain = "Routines switch your profile and sound automatically when triggers match."
     override val addRoutineBtn = "Add Routine"
     override val searchRoutinesHint = "Search routines..."
     override val filterAllRoutines = "All"
@@ -899,7 +925,7 @@ private object EnglishAppStrings : AppStrings() {
         Triple("Emergency Contacts Always Get Through", "Chosen emergency callers are never affected by any routine, even in Silent mode.", "Your safety net stays active 24/7."),
         Triple("AI Assistant", "Type what you want in plain language and get a routine card to Approve, Edit, or Reject.", "Nothing activates without your approval.")
     )
-    override val profilesSubtitle = "Each profile controls simulated sound mode, allowed alert categories, and priority exceptions."
+    override val profilesSubtitle = "Each profile controls sound mode, allowed alert categories, and priority exceptions."
     override val defaultBadge = "DEFAULT"
     override val newProfileTitle = "New Smart Profile"
     override val editProfileTitle = "Edit Profile"
@@ -1305,7 +1331,7 @@ private object ArabicAppStrings : AppStrings() {
     override val activeFocusBannerPaused = "التركيز متوقف مؤقتاً"
     override val activeFocusBannerRunning = "جلسة تركيز نشطة"
     override val distractionsBlockedSuffix = "مقاطعة محاكاة تم حجبها"
-    override val routinesPageExplain = "تقوم الروتينات بتبديل الوضع والصوت المحاكى تلقائياً عند تحقق شروطها."
+    override val routinesPageExplain = "تقوم الروتينات بتبديل الوضع والصوت تلقائياً عند تحقق شروطها."
     override val addRoutineBtn = "إضافة روتين"
     override val searchRoutinesHint = "ابحث في الروتينات..."
     override val filterAllRoutines = "الكل"
@@ -1339,7 +1365,7 @@ private object ArabicAppStrings : AppStrings() {
         Triple("جهات الطوارئ تصلك دائماً", "الأشخاص الذين تختارهم للطوارئ لا يتأثرون بأي روتين أو وضع صامت إطلاقاً.", "أمانك متاح في كل الأوقات."),
         Triple("المساعد الذكي", "اكتب ما تريده بلغة بسيطة، فيحوّله المساعد إلى روتين مع خيارات موافقة أو تعديل أو رفض.", "لا يتم حفظ أي قاعدة إلا بموافقتك.")
     )
-    override val profilesSubtitle = "يحدد كل وضع نمط الصوت المحاكى، فئات الإشعارات المسموحة، واستثناءات جهات الاتصال."
+    override val profilesSubtitle = "يحدد كل وضع نمط الصوت، فئات الإشعارات المسموحة، واستثناءات جهات الاتصال."
     override val defaultBadge = "افتراضي"
     override val newProfileTitle = "وضع ذكي جديد"
     override val editProfileTitle = "تعديل الوضع"

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -40,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.models.NotificationCategory
 import com.example.models.ProfileIconKey
@@ -166,6 +169,18 @@ fun ProfilesScreen(
                                 )
                                 if (profile.isProtected) {
                                     SimulatedDemoBadge(strings.defaultBadge)
+                                }
+                                Surface(
+                                    color = StatusEmerald.copy(alpha = 0.16f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (strings.isArabic) "فعلي" else "Real",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StatusEmerald,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
                                 }
                             }
                             Spacer(Modifier.height(2.dp))
@@ -390,7 +405,7 @@ private fun ProfileEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(strings.simulatedPhoneStatus, style = MaterialTheme.typography.labelLarge)
+                Text(if (strings.isArabic) "وضع صوت الهاتف" else "Phone Sound Mode", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SoundMode.entries.forEach { mode ->
                         FilterChip(

@@ -175,8 +175,13 @@ fun RoutineLogScreen(
                 }
 
                 Spacer(Modifier.height(8.dp))
+                val displayRoutineName = if (strings.isArabic) {
+                    val translatedProfile = strings.localizedProfileName(entry.routineId, entry.routineName)
+                    if (translatedProfile != entry.routineName) translatedProfile
+                    else strings.localizedRoutineName(entry.routineId, entry.routineName)
+                } else entry.routineName
                 Text(
-                    text = entry.routineName,
+                    text = displayRoutineName,
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(Modifier.height(4.dp))

@@ -40,6 +40,39 @@ object RoutineAlarmCalculator {
         )
     }
 
+    fun isCurrentlyActive(
+        routine: SmartRoutine,
+        nowMillis: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Boolean {
+        if (!routine.isEnabled || routine.trigger.type !in listOf(
+                TriggerType.SPECIFIC_TIME,
+                TriggerType.DATE_AND_TIME
+            )
+        ) {
+            return false
+        }
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            this.timeZone = timeZone
+        }
+        val skipSet = routine.skipDates.toSet()
+        val windows = allTimeWindows(routine)
+        for (window in windows) {
+            for (dayOffset in listOf(-1, 0)) {
+                val startCal = calendarForDayOffset(nowMillis, dayOffset, window.startHour, window.startMinute, timeZone)
+                if (!matchesRoutineDay(routine, startCal)) continue
+                val dateStr = dateFormat.format(startCal.time)
+                if (dateStr in skipSet) continue
+                val startMillis = startCal.timeInMillis
+                val endMillis = computeWindowEndMillis(startCal, window)
+                if (nowMillis in startMillis until endMillis) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     fun computeNextAlarms(
         routine: SmartRoutine,
         nowMillis: Long,
