@@ -43,6 +43,16 @@ object RoutineTimeParser {
         return start to end
     }
 
+    fun hasExplicitPeriod(text: String): Boolean {
+        val lower = text.lowercase()
+        val keywords = listOf(
+            "صباح", "صبح", "الصبح", "مساء", "بليل", "بالليل", "ليل", "الليل",
+            "ضهر", "ظهر", "الضهر", "عصر", "العصر", "am", "pm"
+        )
+        if (keywords.any { lower.contains(it) }) return true
+        return Regex("(\\d{1,2})(?::\\d{2})?\\s*(ص|م)(?=\\s|$)").containsMatchIn(lower)
+    }
+
     fun parseExplicitSoundMode(text: String): SoundMode? {
         val lower = text.lowercase()
         return when {

@@ -21,12 +21,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.VolumeOff
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,10 +53,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.models.AppLanguage
 import com.example.models.ConflictResolutionPolicy
 import com.example.models.ContactPriority
@@ -87,6 +97,20 @@ fun SettingsScreen(
     var showResetConfirm by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var showAdvancedSection by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPhoneControlState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val conflicts = remember(state.routines) {
         AutomationSimulationEngine().findPotentialConflicts(state.routines)
@@ -194,6 +218,174 @@ fun SettingsScreen(
                     onClick = { viewModel.reopenOnboarding() },
                     modifier = Modifier.testTag("settings_replay_onboarding_btn")
                 )
+            }
+        }
+
+        // PHONE CONTROL (Real Android DND & AudioManager Step 1)
+        item {
+            val phoneControl = state.phoneControl
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.testTag("phone_control_section")
+            ) {
+                SectionHeader(
+                    title = strings.phoneControlTitle,
+                    subtitle = strings.phoneControlSubtitle
+                )
+
+                CompanionCard(
+                    containerColor = if (phoneControl.hasDndAccess) {
+                        MaterialTheme.colorScheme.surface
+                    } else {
+                        StatusAmber.copy(alpha = 0.08f)
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (phoneControl.hasDndAccess) Icons.Rounded.DoNotDisturbOn else Icons.Rounded.NotificationsOff,
+                                contentDescription = strings.phoneControlAccessStatusLabel,
+                                tint = if (phoneControl.hasDndAccess) StatusEmerald else StatusAmber,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                text = strings.phoneControlAccessStatusLabel,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                        Surface(
+                            color = (if (phoneControl.hasDndAccess) StatusEmerald else StatusAmber).copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("phone_control_dnd_status")
+                        ) {
+                            Text(
+                                text = if (phoneControl.hasDndAccess) strings.phoneControlAccessGranted else strings.phoneControlAccessDenied,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (phoneControl.hasDndAccess) StatusEmerald else StatusAmber,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    if (!phoneControl.hasDndAccess) {
+                        Text(
+                            text = strings.phoneControlAccessExplain,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("phone_control_access_explain")
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                val intent = viewModel.createDndAccessSettingsIntent(context)
+                                runCatching { context.startActivity(intent) }
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("phone_control_grant_dnd_button")
+                        ) {
+                            Text(strings.phoneControlOpenSettingsBtn)
+                        }
+                    } else {
+                        Text(
+                            text = "${strings.phoneControlCurrentRingerPrefix}: ${strings.soundModeLabel(phoneControl.currentRingerMode)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("phone_control_current_ringer")
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = strings.phoneControlRingerTestHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                Triple(SoundMode.SILENT, Icons.Rounded.VolumeOff, "phone_control_ringer_silent_button"),
+                                Triple(SoundMode.VIBRATE, Icons.Rounded.Vibration, "phone_control_ringer_vibrate_button"),
+                                Triple(SoundMode.SOUND, Icons.Rounded.VolumeUp, "phone_control_ringer_sound_button")
+                            ).forEach { (mode, icon, tag) ->
+                                val isActive = phoneControl.currentRingerMode == mode
+                                if (isActive) {
+                                    Button(
+                                        onClick = { viewModel.setRealRingerMode(mode) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.testTag(tag)
+                                    ) {
+                                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(strings.soundModeLabel(mode))
+                                    }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = { viewModel.setRealRingerMode(mode) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.testTag(tag)
+                                    ) {
+                                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(strings.soundModeLabel(mode))
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${strings.phoneControlDndStatusPrefix}: ${if (phoneControl.isDndEnabled) strings.phoneControlDndOnLabel else strings.phoneControlDndOffLabel}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (phoneControl.isDndEnabled) StatusIndigo else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.testTag("phone_control_dnd_state_text")
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = strings.phoneControlStarredNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { viewModel.toggleRealDoNotDisturb() },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.testTag("phone_control_dnd_toggle_button")
+                            ) {
+                                Text(
+                                    if (phoneControl.isDndEnabled) strings.phoneControlDndToggleOffBtn
+                                    else strings.phoneControlDndToggleOnBtn
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -431,6 +431,23 @@ abstract class AppStrings {
     // Playground
     abstract val playgroundSubtitle: String
 
+    // Real Phone Control (Settings Step 1)
+    abstract val phoneControlTitle: String
+    abstract val phoneControlSubtitle: String
+    abstract val phoneControlAccessStatusLabel: String
+    abstract val phoneControlAccessGranted: String
+    abstract val phoneControlAccessDenied: String
+    abstract val phoneControlAccessExplain: String
+    abstract val phoneControlOpenSettingsBtn: String
+    abstract val phoneControlCurrentRingerPrefix: String
+    abstract val phoneControlRingerTestHint: String
+    abstract val phoneControlDndStatusPrefix: String
+    abstract val phoneControlDndOnLabel: String
+    abstract val phoneControlDndOffLabel: String
+    abstract val phoneControlDndToggleOnBtn: String
+    abstract val phoneControlDndToggleOffBtn: String
+    abstract val phoneControlStarredNote: String
+
     fun priorityTierLabel(priority: Int): String = when {
         priority >= 8 -> priorityHighLabel
         priority >= 5 -> priorityMediumLabel
@@ -1035,6 +1052,21 @@ private object EnglishAppStrings : AppStrings() {
     override val conflictDefaultExplain = "Two active routines overlap right now. Which one should win?"
     override val keepCurrentStateBtn = "Keep current state"
     override val playgroundSubtitle = "One-tap interactive walkthroughs using live app state."
+    override val phoneControlTitle = "Phone control"
+    override val phoneControlSubtitle = "Test real device ringer mode and Do Not Disturb access (not connected to routines yet)."
+    override val phoneControlAccessStatusLabel = "Do Not Disturb access"
+    override val phoneControlAccessGranted = "Granted"
+    override val phoneControlAccessDenied = "Not granted"
+    override val phoneControlAccessExplain = "يحتاج التطبيق إلى إذن الوصول إلى \"عدم الإزعاج\" ليتمكن من تغيير وضع الرنين وكتم الصوت على هاتفك الحقيقي. (Grant Do Not Disturb access so the app can change your real phone ringer mode and Do Not Disturb state.)"
+    override val phoneControlOpenSettingsBtn = "Grant Do Not Disturb Access"
+    override val phoneControlCurrentRingerPrefix = "Current ringer mode"
+    override val phoneControlRingerTestHint = "Test real AudioManager ringer modes:"
+    override val phoneControlDndStatusPrefix = "Do Not Disturb"
+    override val phoneControlDndOnLabel = "On (Priority / Starred contacts allowed)"
+    override val phoneControlDndOffLabel = "Off"
+    override val phoneControlDndToggleOnBtn = "Turn Do Not Disturb On"
+    override val phoneControlDndToggleOffBtn = "Turn Do Not Disturb Off"
+    override val phoneControlStarredNote = "Emergency / starred contacts remain allowed during Do Not Disturb."
 }
 
 private object ArabicAppStrings : AppStrings() {
@@ -1409,4 +1441,19 @@ private object ArabicAppStrings : AppStrings() {
     override val conflictDefaultExplain = "يتعارض روتينان نشطان الآن. أيهما يجب أن يربح؟"
     override val keepCurrentStateBtn = "الإبقاء على الحالة الحالية"
     override val playgroundSubtitle = "تجارب تفاعلية بضغطة واحدة متصلة بحالة التطبيق المباشرة."
+    override val phoneControlTitle = "التحكم في الهاتف"
+    override val phoneControlSubtitle = "اختبر التحكم الحقيقي في وضع الرنين وعدم الإزعاج (غير مرتبط بالروتينات بعد)."
+    override val phoneControlAccessStatusLabel = "إذن الوصول لعدم الإزعاج"
+    override val phoneControlAccessGranted = "مُصرّح به"
+    override val phoneControlAccessDenied = "غير مُصرّح"
+    override val phoneControlAccessExplain = "يحتاج المرافق الذكي إلى إذن الوصول لوضع عدم الإزعاج ليتمكن من تغيير وضع الرنين الحقيقي (صامت / اهتزاز / صوت) وتشغيل عدم الإزعاج."
+    override val phoneControlOpenSettingsBtn = "منح إذن عدم الإزعاج"
+    override val phoneControlCurrentRingerPrefix = "وضع الرنين الحالي"
+    override val phoneControlRingerTestHint = "اختبر تغيير وضع الرنين الفعلي عبر AudioManager:"
+    override val phoneControlDndStatusPrefix = "عدم الإزعاج"
+    override val phoneControlDndOnLabel = "مفعّل (جهات الاتصال المميزة بنجمة مسموحة)"
+    override val phoneControlDndOffLabel = "متوقف"
+    override val phoneControlDndToggleOnBtn = "تشغيل عدم الإزعاج"
+    override val phoneControlDndToggleOffBtn = "إيقاف عدم الإزعاج"
+    override val phoneControlStarredNote = "يتم السماح لمكالمات ورسائل جهات الاتصال المميزة بنجمة (الطوارئ) أثناء عدم الإزعاج."
 }

@@ -232,27 +232,36 @@ object RoutineJsonValidator {
 
         when (triggerTypeRaw) {
             "time_range" -> {
+                val startStr = if (triggerObj.isNull("startTime")) "" else triggerObj.optString("startTime", "").trim()
+                val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
+                val startParsed = parseTime24(startStr)
+                val endParsed = parseTime24(endStr)
                 val promptTimeRange = RoutineTimeParser.parseTimeRange(originalPrompt)
-                if (promptTimeRange != null) {
+
+                val shouldUsePromptTimes = promptTimeRange != null && (
+                    startParsed == null ||
+                        endParsed == null ||
+                        startParsed == endParsed ||
+                        (startParsed.first % 12) != (promptTimeRange.first % 12) ||
+                        (endParsed.first % 12) != (promptTimeRange.second % 12) ||
+                        RoutineTimeParser.hasExplicitPeriod(originalPrompt)
+                    )
+
+                if (shouldUsePromptTimes && promptTimeRange != null && promptTimeRange.first != promptTimeRange.second) {
                     startHour = promptTimeRange.first
                     startMinute = 0
                     endHour = promptTimeRange.second
                     endMinute = 0
-                } else {
-                    val startStr = if (triggerObj.isNull("startTime")) "" else triggerObj.optString("startTime", "").trim()
-                    val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
-                    val startParsed = parseTime24(startStr)
-                    val endParsed = parseTime24(endStr)
-                    if (startParsed == null || endParsed == null || startParsed == endParsed) {
-                        return RoutineJsonValidationResult.NeedsClarification(
-                            if (isArabic) "ما وقت البداية والنهاية المحددان لهذا الروتين؟"
-                            else "What start and end times should this routine use?"
-                        )
-                    }
+                } else if (startParsed != null && endParsed != null && startParsed != endParsed) {
                     startHour = startParsed.first
                     startMinute = startParsed.second
                     endHour = endParsed.first
                     endMinute = endParsed.second
+                } else {
+                    return RoutineJsonValidationResult.NeedsClarification(
+                        if (isArabic) "ما وقت البداية والنهاية المحددان لهذا الروتين؟"
+                        else "What start and end times should this routine use?"
+                    )
                 }
             }
             "days" -> {

@@ -1,5 +1,7 @@
 package com.example.viewmodels
 
+import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -41,6 +43,8 @@ import com.example.simulation.AutomationSimulationEngine
 import com.example.simulation.DeviceActionCommand
 import com.example.simulation.DeviceActionExecutor
 import com.example.simulation.EngineEvaluationOutput
+import com.example.simulation.PhoneControlManager
+import com.example.simulation.PhoneControlState
 import com.example.simulation.SimulatedDeviceActionExecutor
 import com.example.simulation.SimulationEvent
 import com.example.utils.TimeUtils
@@ -85,7 +89,8 @@ data class SmartCompanionUiState(
     val isAssistantThinking: Boolean = false,
     val routineDraftFromAssistant: SmartRoutine? = null,
     val demoScenarioResult: DemoScenarioStepResult? = null,
-    val feedbackBanner: String? = null
+    val feedbackBanner: String? = null,
+    val phoneControl: PhoneControlState = PhoneControlState()
 ) {
     val activeProfile: SmartProfile?
         get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
@@ -95,7 +100,8 @@ class SmartCompanionViewModel(
     private val repository: SmartCompanionRepository,
     private val simulationEngine: AutomationSimulationEngine = AutomationSimulationEngine(),
     private val deviceActionExecutor: DeviceActionExecutor = SimulatedDeviceActionExecutor(),
-    private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine()
+    private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine(),
+    private val phoneControlManager: PhoneControlManager = PhoneControlManager()
 ) : ViewModel() {
 
     private val _activeFocus = MutableStateFlow(ActiveFocusSession())
@@ -142,21 +148,21 @@ class SmartCompanionViewModel(
         InteractiveBundle(conflict, messages, thinking, banner, ready)
     }
 
+    private val extraDataFlow = combine(
+        _lastCompletedFocusSummary,
+        _demoScenarioResult,
+        _routineDraftFromAssistant,
+        phoneControlManager.state
+    ) { focusSummary, scenarioResult, draftRoutine, phoneControl ->
+        ExtraBundle(focusSummary, scenarioResult, draftRoutine, phoneControl)
+    }
+
     val uiState: StateFlow<SmartCompanionUiState> = combine(
         coreDataFlow,
         secondaryDataFlow,
         interactiveDataFlow,
-        _lastCompletedFocusSummary,
-        _demoScenarioResult,
-        _routineDraftFromAssistant
-    ) { args ->
-        val core = args[0] as CoreBundle
-        val sec = args[1] as SecondaryBundle
-        val inter = args[2] as InteractiveBundle
-        val focusSummary = args[3] as String?
-        val scenarioResult = args[4] as DemoScenarioStepResult?
-        val draftRoutine = args[5] as SmartRoutine?
-
+        extraDataFlow
+    ) { core, sec, inter, extra ->
         SmartCompanionUiState(
             isReady = inter.isReady,
             preferences = core.prefs,
@@ -167,15 +173,16 @@ class SmartCompanionViewModel(
             focusSessions = sec.focusSessions,
             notificationStats = sec.notificationStats,
             activeFocus = sec.activeFocus,
-            lastCompletedFocusSummary = focusSummary,
+            lastCompletedFocusSummary = extra.focusSummary,
             latestSimulationTrace = sec.trace,
             lastInterruptionDecision = sec.interruption,
             pendingConflict = inter.pendingConflict,
             assistantMessages = inter.assistantMessages,
             isAssistantThinking = inter.isAssistantThinking,
-            routineDraftFromAssistant = draftRoutine,
-            demoScenarioResult = scenarioResult,
-            feedbackBanner = inter.feedbackBanner
+            routineDraftFromAssistant = extra.draftRoutine,
+            demoScenarioResult = extra.scenarioResult,
+            feedbackBanner = inter.feedbackBanner,
+            phoneControl = extra.phoneControl
         )
     }.stateIn(
         scope = viewModelScope,
@@ -198,6 +205,62 @@ class SmartCompanionViewModel(
 
     private fun showBanner(msg: String) {
         _feedbackBanner.value = msg
+    }
+
+    fun refreshPhoneControlState() {
+        phoneControlManager.refreshPermissionAndDeviceState()
+    }
+
+    fun createDndAccessSettingsIntent(context: Context): Intent {
+        return phoneControlManager.createDndAccessSettingsIntent(context)
+    }
+
+    fun setRealRingerMode(mode: SoundMode) {
+        val result = phoneControlManager.applyRingerMode(mode)
+        val ar = isArabic()
+        if (result.permissionRequired) {
+            showBanner(
+                if (ar) "يلزم منح إذن عدم الإزعاج أولاً"
+                else "Do Not Disturb access is required first"
+            )
+            return
+        }
+        val modeLabel = if (ar) mode.arabicName else mode.displayName
+        showBanner(
+            if (result.success) {
+                if (ar) "تم تغيير وضع رنين الهاتف الحقيقي إلى: $modeLabel"
+                else "Phone ringer mode set to: $modeLabel"
+            } else {
+                if (ar) "تعذّر تغيير وضع الرنين على هذا الجهاز"
+                else "Could not update device ringer mode"
+            }
+        )
+    }
+
+    fun toggleRealDoNotDisturb() {
+        val result = phoneControlManager.toggleDoNotDisturb(allowStarredContacts = true)
+        val ar = isArabic()
+        if (result.permissionRequired) {
+            showBanner(
+                if (ar) "يلزم منح إذن عدم الإزعاج أولاً"
+                else "Do Not Disturb access is required first"
+            )
+            return
+        }
+        showBanner(
+            if (result.success) {
+                if (result.state.isDndEnabled) {
+                    if (ar) "تم تشغيل عدم الإزعاج (مع السماح لجهات الطوارئ المميزة بنجمة)"
+                    else "Do Not Disturb turned On (starred contacts allowed)"
+                } else {
+                    if (ar) "تم إيقاف عدم الإزعاج"
+                    else "Do Not Disturb turned Off"
+                }
+            } else {
+                if (ar) "تعذّر تبديل وضع عدم الإزعاج"
+                else "Could not toggle Do Not Disturb"
+            }
+        )
     }
 
     fun completeOnboarding() {
@@ -1543,15 +1606,24 @@ class SmartCompanionViewModel(
         val isReady: Boolean
     )
 
+    private data class ExtraBundle(
+        val focusSummary: String?,
+        val scenarioResult: DemoScenarioStepResult?,
+        val draftRoutine: SmartRoutine?,
+        val phoneControl: PhoneControlState
+    )
+
     class Factory(
         private val repository: SmartCompanionRepository,
-        private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine()
+        private val assistantEngine: CompanionAssistantEngine = LocalDemoAssistantEngine(),
+        private val phoneControlManager: PhoneControlManager = PhoneControlManager()
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return SmartCompanionViewModel(
                 repository = repository,
-                assistantEngine = assistantEngine
+                assistantEngine = assistantEngine,
+                phoneControlManager = phoneControlManager
             ) as T
         }
     }
