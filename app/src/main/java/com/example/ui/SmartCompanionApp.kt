@@ -3,6 +3,7 @@ package com.example.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -175,6 +176,13 @@ fun SmartCompanionApp(
             }
 
             val context = LocalContext.current
+            LaunchedEffect(state.toastMessage) {
+                val toastMsg = state.toastMessage
+                if (toastMsg != null) {
+                    Toast.makeText(context, toastMsg, Toast.LENGTH_LONG).show()
+                    viewModel.clearToastMessage()
+                }
+            }
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestPermission()
             ) { _ -> }

@@ -72,7 +72,7 @@ enum class ConditionType(val displayName: String) {
 
 enum class ActionType(val displayName: String) {
     ACTIVATE_PROFILE("Activate Profile"),
-    SET_SOUND_MODE("Set Simulated Sound Mode"),
+    SET_SOUND_MODE("Set Sound Mode"),
     START_FOCUS_SESSION("Start Focus Session"),
     END_FOCUS_SESSION("End Focus Session"),
     PAUSE_AUTOMATION("Pause Automation"),

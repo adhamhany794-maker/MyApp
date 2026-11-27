@@ -154,7 +154,8 @@ fun ContactsScreen(
 
             // Collapsible Interruption Tester (keeps Contacts clean by default)
             item {
-                val activeProfileName = state.activeProfile?.let { strings.localizedProfileName(it) } ?: "Personal"
+                val activeProfileName = state.activeProfile?.let { strings.localizedProfileName(it) }
+                    ?: strings.localizedProfileName("profile_personal", "Personal")
                 val soundLabel = strings.soundModeLabel(state.preferences.simulatedSoundMode)
 
                 CompanionCard(modifier = Modifier.testTag("interruption_simulator_card")) {

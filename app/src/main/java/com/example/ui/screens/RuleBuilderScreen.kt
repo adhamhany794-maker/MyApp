@@ -240,7 +240,8 @@ fun RuleBuilderScreen(
         .ifEmpty { if (strings.isArabic) "مثال: فقط أثناء أيام الدراسة" else "e.g., Only when automation is active" }
 
     val targetProfileName = state.profiles.firstOrNull { it.id == form.targetProfileId }
-        ?.let { strings.localizedProfileName(it) } ?: "Study"
+        ?.let { strings.localizedProfileName(it) }
+        ?: strings.localizedProfileName(form.targetProfileId, "Study")
     val actionParts = form.selectedActionTypes.map {
         when (it) {
             ActionType.ACTIVATE_PROFILE -> targetProfileName

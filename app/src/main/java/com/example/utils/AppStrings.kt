@@ -591,7 +591,7 @@ abstract class AppStrings {
     fun actionTypeLabel(a: ActionType): String = if (isArabic) {
         when (a) {
             ActionType.ACTIVATE_PROFILE -> "تفعيل وضع ذكي"
-            ActionType.SET_SOUND_MODE -> "ضبط وضع الصوت المحاكى"
+            ActionType.SET_SOUND_MODE -> "ضبط وضع صوت الهاتف"
             ActionType.START_FOCUS_SESSION -> "بدء جلسة تركيز"
             ActionType.END_FOCUS_SESSION -> "إنهاء جلسة تركيز"
             ActionType.PAUSE_AUTOMATION -> "إيقاف الأتمتة مؤقتاً"
@@ -698,6 +698,11 @@ abstract class AppStrings {
                 "study" -> "الدراسة"
                 "work" -> "العمل"
                 "custom" -> "تركيز مخصص"
+                "study profile" -> "الدراسة"
+                "sleep profile" -> "النوم"
+                "work profile" -> "العمل"
+                "personal profile" -> "شخصي"
+                "custom focus" -> "تركيز مخصص"
                 "study (silent)" -> "الدراسة (صامت)"
                 "work (vibrate)" -> "العمل (اهتزاز)"
                 "personal (sound)" -> "شخصي (صوت)"
@@ -713,7 +718,7 @@ abstract class AppStrings {
             "profile_study" -> "تركيز دراسي عميق مع كتم تنبيهات التواصل الاجتماعي والسماح بمكالمات الطوارئ."
             "profile_work" -> "إنتاجية متوازنة تبقي قنوات العمل متاحة وتقلل ضوضاء التطبيقات الترفيهية."
             "profile_sleep" -> "حماية ليلية تحجب التنبيهات غير العاجلة مع إبقاء مكالمات الطوارئ مسموحة."
-            "profile_personal" -> "وضع يومي مريح بصوت طبيعي محاكى وتواصل متاح."
+            "profile_personal" -> "وضع يومي مريح بصوت طبيعي وتواصل متاح."
             "profile_custom" -> "قالب مرن قابل للتخصيص للمكتبة أو التنقل اليومي."
             else -> profile.description
         }
@@ -745,10 +750,10 @@ abstract class AppStrings {
     fun localizedRoutineDescription(routine: SmartRoutine): String {
         if (!isArabic) return routine.description
         return when (routine.id) {
-            "routine_study_time" -> "يفعّل وضع الدراسة، يكتم التنبيهات المحاكاة، ويبدأ جلسة تركيز في أمسيات أيام العمل."
+            "routine_study_time" -> "يفعّل وضع الدراسة، يضبط الهاتف على الصامت، ويبدأ جلسة تركيز في أمسيات أيام العمل."
             "routine_sleep_schedule" -> "يحمي راحتك الليلية يومياً الساعة 11:00 م مع إبقاء مكالمات الطوارئ متاحة."
             "routine_work_hours" -> "يهيئ الهاتف لوضع العمل الساعة 9:00 ص في أيام الأسبوع ويقلل المقاطعات."
-            "routine_personal_time" -> "يعيد الوضع الشخصي وصوت الهاتف المحاكى الطبيعي عند انتهاء العمل الساعة 5:00 م."
+            "routine_personal_time" -> "يعيد الوضع الشخصي وصوت الهاتف الطبيعي عند انتهاء العمل الساعة 5:00 م."
             "routine_evening_unwind" -> "يتقاطع الساعة 6:00 م لتوضيح كيفية اكتشاف التعارض وحله حسب الأولوية."
             else -> routine.description
         }
@@ -1123,7 +1128,7 @@ private object EnglishAppStrings : AppStrings() {
     override val languageTitle = "Language & Layout Direction"
     override val languageSub = "Change app text between English and Arabic with automatic right-to-left layout."
     override val replayOnboardingExplain = "Revisit the 3-step introduction to see how routines and safety work."
-    override val manualOverrideExplain = "Temporarily switch simulated sound mode or undo back to your previous state."
+    override val manualOverrideExplain = "Temporarily switch real phone ringer mode or undo back to your previous state."
     override val conflictCheckExplain = "Check if any active routines run at the same time and choose a winner."
     override val emergencyTestExplain = "Simulate an incoming call to confirm emergency contacts always ring through."
     override val automationPrefsTitle = "Automation Preferences"
@@ -1563,7 +1568,7 @@ private object ArabicAppStrings : AppStrings() {
     override val languageTitle = "اللغة واتجاه الواجهة"
     override val languageSub = "تغيير لغة التطبيق بين الإنجليزية والعربية مع تفعيل اتجاه RTL تلقائياً."
     override val replayOnboardingExplain = "إعادة عرض الدليل التعريفي المكون من 3 خطوات لمعرفة طريقة عمل التطبيق."
-    override val manualOverrideExplain = "تبديل وضع الصوت المحاكى مؤقتاً أو التراجع إلى الحالة السابقة."
+    override val manualOverrideExplain = "تبديل وضع رنين الهاتف الفعلي مؤقتاً أو التراجع إلى الحالة السابقة."
     override val conflictCheckExplain = "تحقق مما إذا كانت هناك روتينات متداخلة واختر الأفضل."
     override val emergencyTestExplain = "جرّب مكالمة واردة للتأكد من وصول جهات الطوارئ دائماً."
     override val automationPrefsTitle = "تفضيلات الأتمتة"

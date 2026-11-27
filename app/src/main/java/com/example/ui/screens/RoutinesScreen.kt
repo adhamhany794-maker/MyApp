@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -79,6 +80,7 @@ import com.example.ui.components.ProfileIconBadge
 import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.StatusAmber
+import com.example.ui.theme.StatusEmerald
 import com.example.utils.AppStrings
 import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
@@ -284,6 +286,18 @@ fun RoutinesScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(strings.screenProfiles, style = MaterialTheme.typography.titleSmall)
+                        Surface(
+                            color = StatusEmerald.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (strings.isArabic) "فعلي" else "Real",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusEmerald,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                     TextButton(
                         onClick = onOpenProfiles,
@@ -398,10 +412,10 @@ fun RoutinesScreen(
         // Temporary Debug Card for verifying real phone control & alarm scheduling
         item {
             val nowMillis = System.currentTimeMillis()
-            val upcomingAlarms = remember(state.routines, state.routineLogs.size) {
+            val upcomingAlarms = remember(state.routines, state.routineLogs.size, strings.isArabic) {
                 state.routines
                     .flatMap { r ->
-                        RoutineAlarmCalculator.computeNextAlarms(r, nowMillis).map { ev -> r.name to ev }
+                        RoutineAlarmCalculator.computeNextAlarms(r, nowMillis).map { ev -> strings.localizedRoutineName(r) to ev }
                     }
                     .sortedBy { it.second.triggerAtMillis }
                     .take(5)

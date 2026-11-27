@@ -134,13 +134,24 @@ object RoutineTimeParser {
         }
 
         // 7. Plain digits inside range context: e.g. "من 8 ل10", "8 to 11", "من 8 الى 10"
+        val preSeparatorDigitsRegex = Regex(
+            "(?<![:\\d])(\\d{1,2})(?!:)\\s*(?:لـ|ل|to|الى|إلى|-|–)",
+            RegexOption.IGNORE_CASE
+        )
+        for (m in preSeparatorDigitsRegex.findAll(lower)) {
+            val digitGroup = m.groups[1] ?: continue
+            val rawHour = digitGroup.value.toIntOrNull() ?: continue
+            candidates.add(RawCandidate(digitGroup.range.first, digitGroup.range.last + 1, rawHour, 0, ""))
+        }
+
         val rangeDigitsRegex = Regex(
             "(?:من|from|لـ|ل|to|الى|إلى|-|–)\\s*(\\d{1,2})(?!:)",
             RegexOption.IGNORE_CASE
         )
         for (m in rangeDigitsRegex.findAll(lower)) {
-            val rawHour = m.groupValues[1].toIntOrNull() ?: continue
-            candidates.add(RawCandidate(m.range.first, m.range.last + 1, rawHour, 0, ""))
+            val digitGroup = m.groups[1] ?: continue
+            val rawHour = digitGroup.value.toIntOrNull() ?: continue
+            candidates.add(RawCandidate(digitGroup.range.first, digitGroup.range.last + 1, rawHour, 0, ""))
         }
 
         // Filter out overlapping candidates, prioritizing more specific matches (fractions, HH:mm)
@@ -163,10 +174,12 @@ object RoutineTimeParser {
 
         val ordered = nonOverlapping.sortedBy { it.startIndex }
 
+        val standalonePmToken = Regex("(?:^|\\s|\\d)(م|pm)(?=\\s|$|[.,!])")
+        val standaloneAmToken = Regex("(?:^|\\s|\\d)(ص|am)(?=\\s|$|[.,!])")
         val globalEvening = lower.contains("مساء") || lower.contains("بليل") || lower.contains("بالليل") ||
-            lower.contains("ليل") || lower.contains("pm") || lower.contains("م") || lower.contains("عصر")
+            lower.contains("ليل") || lower.contains("عصر") || standalonePmToken.containsMatchIn(lower)
         val globalMorning = lower.contains("صباح") || lower.contains("صبح") || lower.contains("الصبح") ||
-            lower.contains("am") || lower.contains("ص") || lower.contains("فجر")
+            lower.contains("فجر") || standaloneAmToken.containsMatchIn(lower)
 
         // Period propagation: if any candidate has explicit evening or morning, propagate to the other candidate in range
         val anyExplicitPm = ordered.any { isPmPeriod(it.periodStr) }
@@ -256,10 +269,10 @@ object RoutineTimeParser {
         val lower = text.lowercase()
         val keywords = listOf(
             "صباح", "صبح", "الصبح", "مساء", "بليل", "بالليل", "ليل", "الليل",
-            "ضهر", "ظهر", "الضهر", "عصر", "العصر", "am", "pm"
+            "ضهر", "ظهر", "الضهر", "عصر", "العصر"
         )
         if (keywords.any { lower.contains(it) }) return true
-        return Regex("(\\d{1,2})(?::\\d{2})?\\s*(ص|م)(?=\\s|$)").containsMatchIn(lower)
+        return Regex("(?:^|\\s|\\d)(ص|م|am|pm)(?=\\s|$|[.,!])").containsMatchIn(lower)
     }
 
     fun parseExplicitSoundMode(text: String): SoundMode? {

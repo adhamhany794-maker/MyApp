@@ -192,49 +192,38 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
             val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
             val isSleep = lower.contains("sleep") || lower.contains("sleeping") || lower.contains("bed") || lower.contains("نوم") || lower.contains("ليل") || lower.contains("بليل")
-            val isStudy = lower.contains("study") || lower.contains("studying") || lower.contains("دراسة")
             val isUniversity = lower.contains("university") || lower.contains("campus") || lower.contains("جامعة")
-            val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
+            val isLibraryLocation = (lower.contains("library") || lower.contains("مكتبة")) &&
+                (lower.contains("enter") || lower.contains("at ") || lower.contains("عند") || lower.contains("دخول"))
+            val isStudyingActivity = lower.contains("while i'm studying") || lower.contains("while studying") || lower.contains("أثناء الدراسة")
             val hasStartAndEnd = detailedRange != null || extractedPoints.size >= 2
-            val hasPresetDefaults = isSleep || isStudy || isUniversity || isWork || hasStartAndEnd
+            val draftHasClock = state.pendingRoutineDraft?.let {
+                it.scheduleStartTime.isNotBlank() && it.scheduleEndTime.isNotBlank()
+            } == true
+            val isNonClockTrigger = isSleep || isUniversity || isLibraryLocation || isStudyingActivity
 
-            if (extractedPoints.isEmpty() && !hasPresetDefaults && state.pendingRoutineDraft == null && !hasStartAndEnd) {
+            if (extractedPoints.isEmpty() && !isNonClockTrigger && !hasStartAndEnd && !draftHasClock) {
                 val text = if (isArabic) {
-                    "فهمت طلبك لإنشاء الروتين. ما هي أوقات البداية والنهاية (مثلاً من 8 إلى 11)؟"
+                    "فهمت طلبك لإنشاء الروتين. ما هي أوقات البداية والنهاية (مثلاً من 8:30 إلى 10:45)؟"
                 } else {
-                    "I understand you want to create a routine. What are the start and end times (for example 8 to 11)?"
+                    "I understand you want to create a routine. What are the start and end times (for example 8:30 to 10:45)?"
                 }
-                val placeholderRoutine = SmartRoutine(
-                    id = "routine_draft_${UUID.randomUUID().toString().take(6)}",
-                    name = if (isArabic) "روتين مخصص" else "Custom Routine",
-                    description = prompt,
-                    isEnabled = true,
-                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = 20, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
-                    conditions = emptyList(),
-                    actions = listOf(RuleAction(ActionType.SET_SOUND_MODE, SoundMode.SILENT.name, "Silent")),
-                    exceptions = emptyList(),
-                    priority = 5,
-                    scheduleStartTime = "",
-                    scheduleEndTime = "",
-                    targetProfileId = "profile_study",
-                    lastExecutionResult = "",
-                    lastExecutedAtMillis = null,
-                    executionCount = 0,
-                    skippedCount = 0
-                )
                 return AssistantReply(text = text, proposal = null)
             }
 
             val proposal = buildOrMergeRoutineProposal(prompt, lower, isArabic, state.pendingRoutineDraft)
-            val isComplete = proposal.routine.scheduleStartTime.isNotBlank() && proposal.routine.scheduleEndTime.isNotBlank() &&
-                (lower.contains("am") || lower.contains("pm") || lower.contains("مساء") || lower.contains("صباح") || lower.contains("م") || lower.contains("ص") || existingDraftHasPeriod(state.pendingRoutineDraft, lower) || hasPresetDefaults)
+            val hasClockTimes = proposal.routine.scheduleStartTime.isNotBlank() && proposal.routine.scheduleEndTime.isNotBlank()
+            val hasPeriodOrNonClock = RoutineTimeParser.hasExplicitPeriod(lower) ||
+                existingDraftHasPeriod(state.pendingRoutineDraft, lower) ||
+                isNonClockTrigger
+            val isComplete = if (hasClockTimes) hasPeriodOrNonClock else isNonClockTrigger
 
             val text = if (isArabic) {
-                if (isComplete || state.clarificationTurnCount >= 1) {
+                if (isComplete || (hasClockTimes && state.clarificationTurnCount >= 1)) {
                     "يمكنني إنشاء روتين بالإعدادات التالية:\n\n" +
                         "• الاسم: ${proposal.routine.name}\n" +
                         "• المُشغّل: ${proposal.triggerSummary}\n" +
-                        "• وقت الانتهاء: ${proposal.endTimeLabel}\n" +
+                        (if (proposal.endTimeLabel.isNotBlank()) "• وقت الانتهاء: ${proposal.endTimeLabel}\n" else "") +
                         "• الإجراء: ${proposal.actionSummary}\n" +
                         "• الاستثناء: ${proposal.exceptionSummary}\n\n" +
                         "هل تريد مراجعة هذا الروتين أو تأكيد إنشائه؟"
@@ -242,11 +231,11 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                     "هل تعني من ${proposal.routine.scheduleStartTime} إلى ${proposal.routine.scheduleEndTime} صباحاً أم مساءً؟"
                 }
             } else {
-                if (isComplete || state.clarificationTurnCount >= 1) {
+                if (isComplete || (hasClockTimes && state.clarificationTurnCount >= 1)) {
                     "I can create a routine with the following configuration:\n\n" +
                         "• Name: ${proposal.routine.name}\n" +
                         "• Trigger: ${proposal.triggerSummary}\n" +
-                        "• End time: ${proposal.endTimeLabel}\n" +
+                        (if (proposal.endTimeLabel.isNotBlank()) "• End time: ${proposal.endTimeLabel}\n" else "") +
                         "• Action: ${proposal.actionSummary}\n" +
                         "• Exception: ${proposal.exceptionSummary}\n\n" +
                         "Would you like to review or confirm creating this routine?"
@@ -256,7 +245,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             }
             return AssistantReply(
                 text = text,
-                proposal = if (isComplete || state.clarificationTurnCount >= 1) proposal else null
+                proposal = if (isComplete || (hasClockTimes && state.clarificationTurnCount >= 1)) proposal else null
             )
         }
 
@@ -308,9 +297,12 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             lower.contains("bed") || lower.contains("نوم") || lower.contains("ليل") || lower.contains("بليل")
         val isWork = lower.contains("work") || lower.contains("office") || lower.contains("عمل")
 
+        val isLibraryLocation = (lower.contains("library") || lower.contains("مكتبة")) &&
+            (lower.contains("enter") || lower.contains("at ") || lower.contains("عند") || lower.contains("دخول"))
         val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
         val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
 
+        val hasClockWindow = detailedRange != null || extractedPoints.isNotEmpty()
         val startHour: Int
         val startMinute: Int
         val endHour: Int
@@ -332,18 +324,9 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 endMinute = startMinute
             }
         } else {
-            startHour = when {
-                isSleep -> 23
-                isStudy -> 18
-                isUniversity -> 9
-                isWork -> 9
-                else -> 20
-            }
+            startHour = 0
             startMinute = 0
-            endHour = when {
-                isSleep -> 7
-                else -> (startHour + 2) % 24
-            }
+            endHour = 0
             endMinute = 0
         }
 
@@ -381,6 +364,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         val routineName = if (isArabic) {
             when {
                 isUniversity -> "أيام الجامعة المركزة"
+                isLibraryLocation -> "تركيز المكتبة"
                 isSleep -> "حماية الهدوء الليلي"
                 isStudy -> "هدوء وقت الدراسة"
                 isWork -> "تركيز ساعات العمل"
@@ -389,6 +373,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
         } else {
             when {
                 isUniversity -> "University Focus Days"
+                isLibraryLocation -> "Library Silence"
                 isSleep -> "Night Quiet Protection"
                 isStudy -> "Focused Study Silence"
                 isWork -> "Workday Deep Focus"
@@ -396,8 +381,8 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             }
         }
 
-        val startLabel = TimeUtils.formatTime12h(startHour, startMinute, isArabic)
-        val endLabel = TimeUtils.formatTime12h(endHour, endMinute, isArabic)
+        val startLabel = if (hasClockWindow) TimeUtils.formatTime12h(startHour, startMinute, isArabic) else ""
+        val endLabel = if (hasClockWindow) TimeUtils.formatTime12h(endHour, endMinute, isArabic) else ""
 
         val trigger = when {
             isUniversity -> RuleTrigger(
@@ -408,6 +393,14 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 location = SimulatedLocation.UNIVERSITY,
                 summary = if (isArabic) "الموقع المحاكى: الجامعة" else "Simulated location: University (${dayFilter.label})"
             )
+            isLibraryLocation -> RuleTrigger(
+                type = TriggerType.LOCATION_ENTERED,
+                hour = startHour,
+                minute = startMinute,
+                dayFilter = dayFilter,
+                location = SimulatedLocation.LIBRARY,
+                summary = if (isArabic) "الموقع المحاكى: المكتبة" else "Simulated location: Library"
+            )
             lower.contains("while i'm studying") || lower.contains("while studying") || lower.contains("أثناء الدراسة") -> RuleTrigger(
                 type = TriggerType.ACTIVITY_STARTED,
                 hour = startHour,
@@ -415,6 +408,13 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 dayFilter = dayFilter,
                 activity = SimulatedActivity.STUDYING,
                 summary = if (isArabic) "النشاط المحاكى: الدراسة" else "Simulated activity: Studying"
+            )
+            isSleep && !hasClockWindow -> RuleTrigger(
+                type = TriggerType.SPECIFIC_DAYS,
+                hour = 0,
+                minute = 0,
+                dayFilter = dayFilter,
+                summary = if (isArabic) "حماية النوم (${dayFilter.label})" else "Daily sleep protection"
             )
             else -> RuleTrigger(
                 type = TriggerType.SPECIFIC_TIME,
@@ -462,17 +462,18 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             conditions = listOf(RuleCondition(ConditionType.AUTOMATION_ENABLED, "Enabled")),
             actions = listOf(
                 RuleAction(ActionType.ACTIVATE_PROFILE, profileId, "Activate $profileLabel"),
-                RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated $soundLabel Mode")
+                RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set $soundLabel Mode")
             ),
             exceptions = exceptions,
             priority = 8,
             scheduleStartTime = startLabel,
             scheduleEndTime = endLabel,
             targetProfileId = profileId,
-            lastExecutionResult = if (isArabic) "تم الإنشاء عبر المساعد — جاهز للاختبار" else "Created via Assistant — ready to test",
+            lastExecutionResult = if (isArabic) "تم الإنشاء عبر المساعد — جاهز للتشغيل" else "Created via Assistant — ready to run",
             lastExecutedAtMillis = null,
             executionCount = 0,
-            skippedCount = 0
+            skippedCount = 0,
+            enableDoNotDisturb = (soundMode == SoundMode.SILENT)
         )
 
         return RoutineProposal(
@@ -504,17 +505,25 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
 
         val detailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
         val extractedPoints = RoutineTimeParser.extractTimePoints(lower)
-        val isEvening = lower.contains("مساء") || lower.contains("pm") || lower.contains("evening") || lower.contains("بليل") || lower.contains("ليل") || lower.trim() == "م"
-        val isMorning = lower.contains("صباح") || lower.contains("صبح") || lower.contains("am") || lower.contains("morning") || lower.trim() == "ص"
+        val pmRegex = Regex("(?:^|\\s|\\d)(م|pm)(?=\\s|$|[.,!])")
+        val amRegex = Regex("(?:^|\\s|\\d)(ص|am)(?=\\s|$|[.,!])")
+        val isEvening = lower.contains("مساء") || lower.contains("evening") || lower.contains("بليل") ||
+            lower.contains("ليل") || pmRegex.containsMatchIn(lower)
+        val isMorning = lower.contains("صباح") || lower.contains("صبح") || lower.contains("morning") ||
+            amRegex.containsMatchIn(lower)
 
         val existingDraftPoints = RoutineTimeParser.extractTimePoints(existingDraft.scheduleStartTime + " " + existingDraft.scheduleEndTime)
+        val hasAnyTime = detailedRange != null || extractedPoints.isNotEmpty() || existingDraftPoints.isNotEmpty()
+        if (!hasAnyTime) {
+            return baseProposal
+        }
+
         var startHour = existingDraftPoints.firstOrNull()?.hour24 ?: existingDraft.trigger.hour
         var startMinute = existingDraftPoints.firstOrNull()?.minute ?: existingDraft.trigger.minute
-        var endHour = if (existingDraftPoints.size >= 2) existingDraftPoints[1].hour24 else ((startHour + 3) % 24)
+        var endHour = if (existingDraftPoints.size >= 2) existingDraftPoints[1].hour24 else ((startHour + 2) % 24)
         var endMinute = if (existingDraftPoints.size >= 2) existingDraftPoints[1].minute else startMinute
 
         if (detailedRange != null) {
-            // 2. Explicit start and end times in user message completely override draft times
             startHour = detailedRange.startHour
             startMinute = detailedRange.startMinute
             endHour = detailedRange.endHour
@@ -526,7 +535,7 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
                 endHour = extractedPoints[1].hour24
                 endMinute = extractedPoints[1].minute
             } else {
-                endHour = (startHour + 3) % 24
+                endHour = (startHour + 2) % 24
                 endMinute = startMinute
             }
         } else {
@@ -586,10 +595,12 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
             trigger = updatedTrigger,
             actions = listOf(
                 RuleAction(ActionType.ACTIVATE_PROFILE, profileId, "Activate profile"),
-                RuleAction(ActionType.SET_SOUND_MODE, effectiveSoundMode.name, "Set simulated $soundLabel Mode")
+                RuleAction(ActionType.SET_SOUND_MODE, effectiveSoundMode.name, "Set $soundLabel Mode")
             ),
             scheduleStartTime = startLabel,
             scheduleEndTime = endLabel,
+            targetProfileId = profileId,
+            enableDoNotDisturb = (effectiveSoundMode == SoundMode.SILENT),
             description = if (isArabic) "تم التحديث بناءً على إجابتك: \"$original\"" else "Updated from your response: \"$original\""
         )
 
@@ -607,17 +618,8 @@ class LocalDemoAssistantEngine : CompanionAssistantEngine {
     }
 
     private fun existingDraftHasPeriod(draft: SmartRoutine?, lower: String): Boolean {
-        if (draft == null) return false
-        return draft.scheduleStartTime.contains("AM", ignoreCase = true) ||
-            draft.scheduleStartTime.contains("PM", ignoreCase = true) ||
-            draft.scheduleStartTime.contains("صباح") ||
-            draft.scheduleStartTime.contains("صبح") ||
-            draft.scheduleStartTime.contains("ص") ||
-            draft.scheduleStartTime.contains("مساء") ||
-            draft.scheduleStartTime.contains("بليل") ||
-            draft.scheduleStartTime.contains("ليل") ||
-            draft.scheduleStartTime.contains("م") ||
-            lower.contains("مساء") || lower.contains("صباح") || lower.contains("am") || lower.contains("pm") ||
-            lower.contains("بليل") || lower.contains("ليل") || lower.contains("صبح") || lower.contains("الصبح")
+        if (draft == null) return RoutineTimeParser.hasExplicitPeriod(lower)
+        val draftClock = "${draft.scheduleStartTime} ${draft.scheduleEndTime}".trim()
+        return RoutineTimeParser.hasExplicitPeriod(draftClock) || RoutineTimeParser.hasExplicitPeriod(lower)
     }
 }

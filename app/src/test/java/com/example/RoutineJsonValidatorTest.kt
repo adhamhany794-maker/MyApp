@@ -716,5 +716,149 @@ class RoutineJsonValidatorTest {
         assertEquals("7:00 م", valid.proposal.routine.scheduleStartTime)
         assertEquals("6:00 ص", valid.proposal.endTimeLabel)
     }
+    @Test
+    fun `assistant parses Arabic fractions and exact minutes correctly`() {
+        val pointsHalf = com.example.assistant.RoutineTimeParser.extractTimePoints("من 8 ونص إلى 10:45")
+        assertEquals(2, pointsHalf.size)
+        assertEquals(8, pointsHalf[0].hour24)
+        assertEquals(30, pointsHalf[0].minute)
+        assertEquals(10, pointsHalf[1].hour24)
+        assertEquals(45, pointsHalf[1].minute)
+
+        val pointsQuarter = com.example.assistant.RoutineTimeParser.extractTimePoints("8 وربع")
+        assertEquals(1, pointsQuarter.size)
+        assertEquals(8, pointsQuarter[0].hour24)
+        assertEquals(15, pointsQuarter[0].minute)
+
+        val pointsMinusQuarter = com.example.assistant.RoutineTimeParser.extractTimePoints("9 الا ربع")
+        assertEquals(1, pointsMinusQuarter.size)
+        assertEquals(8, pointsMinusQuarter[0].hour24)
+        assertEquals(45, pointsMinusQuarter[0].minute)
+
+        val pointsEnglish = com.example.assistant.RoutineTimeParser.extractTimePoints("quarter past 8 and half past 9")
+        assertEquals(2, pointsEnglish.size)
+        assertEquals(8, pointsEnglish[0].hour24)
+        assertEquals(15, pointsEnglish[0].minute)
+        assertEquals(9, pointsEnglish[1].hour24)
+        assertEquals(30, pointsEnglish[1].minute)
+    }
+
+    @Test
+    fun `smart mode activation and restore defaults work correctly`() = runTest {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val phoneControl = com.example.simulation.PhoneControlManager(com.example.simulation.AndroidPhoneControlGateway(context))
+        val backupStore = com.example.automation.SharedPreferencesRoutineStateBackupStore(context)
+        backupStore.clearAll()
+
+        // Test activation saves previous backup
+        val prevRinger = phoneControl.currentRingerMode()
+        val prevFilter = phoneControl.currentInterruptionFilter()
+        backupStore.onRoutineStarted("mode_profile_study", prevRinger, prevFilter, System.currentTimeMillis())
+        assertNotNull(backupStore.getBackup())
+
+        // Test restore defaults restores state and clears backup
+        val restoreDecision = backupStore.onRoutineEnded("mode_profile_study")
+        assertTrue(restoreDecision is com.example.automation.EndRestoreDecision.Restore)
+        backupStore.clearAll()
+        assertNull(backupStore.getBackup())
+    }
+
+    @Test
+    fun `assistant preserves minutes and fractions across parser, validator, and card in Arabic and English`() = runTest {
+        val engine = LocalDemoAssistantEngine()
+
+        // Arabic range with explicit minutes: "من 8:30 مساء الى 10:45"
+        val arExactReply = engine.processPrompt("من 8:30 مساء الى 10:45", baseSnapshot(AppLanguage.ARABIC))
+        assertNotNull(arExactReply.proposal)
+        val arExactRoutine = arExactReply.proposal!!.routine
+        assertEquals(20, arExactRoutine.trigger.hour)
+        assertEquals(30, arExactRoutine.trigger.minute)
+        assertEquals("8:30 م", arExactRoutine.scheduleStartTime)
+        assertEquals("10:45 م", arExactRoutine.scheduleEndTime)
+        assertEquals(
+            "من 8:30 م إلى 10:45 م",
+            com.example.utils.RoutineTimeInputValidator.formatRoutineRange(arExactRoutine, isArabic = true, is24Hour = false)
+        )
+
+        // Arabic fractions: "من 8 ونص إلى 9 الا ربع"
+        val arFractionReply = engine.processPrompt("صامت من 8 ونص مساء الى 9 الا ربع مساء", baseSnapshot(AppLanguage.ARABIC))
+        assertNotNull(arFractionReply.proposal)
+        val arFracRoutine = arFractionReply.proposal!!.routine
+        assertEquals(20, arFracRoutine.trigger.hour)
+        assertEquals(30, arFracRoutine.trigger.minute)
+        assertEquals("8:30 م", arFracRoutine.scheduleStartTime)
+        assertEquals("8:45 م", arFracRoutine.scheduleEndTime)
+
+        // Single/open fractions via parser
+        val qPastEn = com.example.assistant.RoutineTimeParser.extractTimePoints("quarter past 8")
+        assertEquals(1, qPastEn.size)
+        assertEquals(8, qPastEn[0].hour24)
+        assertEquals(15, qPastEn[0].minute)
+
+        // Gemini JSON validator must preserve prompt minutes even if model omits minutes
+        val geminiMissingMinutes = """
+            {
+              "status": "ok",
+              "name": "Study Session",
+              "trigger": {
+                "type": "time_range",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "days": ["EVERY_DAY"]
+              },
+              "conditions": ["AUTOMATION_ENABLED"],
+              "action": { "mode": "silent" },
+              "exceptions": ["EMERGENCY_CONTACTS"]
+            }
+        """.trimIndent()
+        val validated = RoutineJsonValidator.parseAndValidate(
+            rawJson = geminiMissingMinutes,
+            originalPrompt = "silence from 8:30 pm to 10:45 pm",
+            existingRoutines = emptyList(),
+            isArabic = false
+        )
+        assertTrue(validated is RoutineJsonValidationResult.Valid)
+        val validRoutine = (validated as RoutineJsonValidationResult.Valid).proposal.routine
+        assertEquals(20, validRoutine.trigger.hour)
+        assertEquals(30, validRoutine.trigger.minute)
+        assertEquals("8:30 PM", validRoutine.scheduleStartTime)
+        assertEquals("10:45 PM", validRoutine.scheduleEndTime)
+        assertEquals(
+            "From 8:30 PM to 10:45 PM",
+            com.example.utils.RoutineTimeInputValidator.formatRoutineRange(validRoutine, isArabic = false, is24Hour = false)
+        )
+    }
+
+    @Test
+    fun `assistant never uses a default 8 PM start time when prompt omits time`() = runTest {
+        val engine = LocalDemoAssistantEngine()
+
+        // Prompt without any time should ask clarification, not invent 20:00
+        val noTimeAr = engine.processPrompt("اكتم هاتفي في المساء", baseSnapshot(AppLanguage.ARABIC))
+        assertNull(noTimeAr.proposal)
+
+        val noTimeEn = engine.processPrompt("Silence my phone when studying", baseSnapshot(AppLanguage.ENGLISH))
+        assertNull(noTimeEn.proposal)
+
+        // Days trigger without clock times must keep scheduleStartTime empty rather than 20:00
+        val daysJson = """
+            {
+              "status": "ok",
+              "name": "نوم هادئ",
+              "trigger": {
+                "type": "days",
+                "days": ["WEEKENDS"]
+              },
+              "conditions": ["AUTOMATION_ENABLED"],
+              "action": { "mode": "silent" },
+              "exceptions": ["EMERGENCY_CONTACTS"]
+            }
+        """.trimIndent()
+        val res = RoutineJsonValidator.parseAndValidate(daysJson, "صامت في العطلة", emptyList(), isArabic = true)
+        assertTrue(res is RoutineJsonValidationResult.Valid)
+        val routine = (res as RoutineJsonValidationResult.Valid).proposal.routine
+        assertEquals("", routine.scheduleStartTime)
+        assertEquals("", routine.scheduleEndTime)
+    }
 }
 

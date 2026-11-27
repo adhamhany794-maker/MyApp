@@ -57,6 +57,7 @@ import com.example.simulation.PhoneControlState
 import com.example.simulation.SimulatedDeviceActionExecutor
 import com.example.simulation.SimulationEvent
 import com.example.utils.TimeUtils
+import com.example.utils.stringsFor
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,7 +114,8 @@ data class SmartCompanionUiState(
     val dndPermissionAlertRoutine: String? = null,
     val exactAlarmDeniedNotice: Boolean = false,
     val savePermissionDialog: SavePermissionDialogState? = null,
-    val activePhoneBackup: SavedPhoneBackup? = null
+    val activePhoneBackup: SavedPhoneBackup? = null,
+    val toastMessage: String? = null
 ) {
     val activeProfile: SmartProfile?
         get() = profiles.firstOrNull { it.id == preferences.activeProfileId } ?: profiles.firstOrNull()
@@ -147,6 +149,7 @@ class SmartCompanionViewModel(
     private val _exactAlarmDeniedNotice = MutableStateFlow(false)
     private val _savePermissionDialog = MutableStateFlow<SavePermissionDialogState?>(null)
     private val _activePhoneBackup = MutableStateFlow<SavedPhoneBackup?>(routineBackupStore.getBackup())
+    private val _toastMessage = MutableStateFlow<String?>(null)
 
     private var focusTimerJob: Job? = null
 
@@ -194,9 +197,10 @@ class SmartCompanionViewModel(
         _dndPermissionAlertRoutine,
         _exactAlarmDeniedNotice,
         _savePermissionDialog,
-        _activePhoneBackup
-    ) { dndAlert, exactDenied, saveDialog, phoneBackup ->
-        AlertBundle(dndAlert, exactDenied, saveDialog, phoneBackup)
+        _activePhoneBackup,
+        _toastMessage
+    ) { dndAlert, exactDenied, saveDialog, phoneBackup, toastMessage ->
+        AlertBundle(dndAlert, exactDenied, saveDialog, phoneBackup, toastMessage)
     }
 
     val uiState: StateFlow<SmartCompanionUiState> = combine(
@@ -230,7 +234,8 @@ class SmartCompanionViewModel(
             dndPermissionAlertRoutine = alerts.dndAlert,
             exactAlarmDeniedNotice = alerts.exactDenied,
             savePermissionDialog = alerts.saveDialog,
-            activePhoneBackup = alerts.phoneBackup
+            activePhoneBackup = alerts.phoneBackup,
+            toastMessage = alerts.toastMessage
         )
     }.stateIn(
         scope = viewModelScope,
@@ -255,6 +260,25 @@ class SmartCompanionViewModel(
 
     private fun showBanner(msg: String) {
         _feedbackBanner.value = msg
+    }
+
+    fun clearToastMessage() {
+        _toastMessage.value = null
+    }
+
+    private fun showRestoreToast(msg: String) {
+        _toastMessage.value = msg
+    }
+
+    private fun formatArabicRestoredToast(
+        ringer: SoundMode,
+        interruptionFilter: Int,
+        extraSuffix: String = ""
+    ): String {
+        val dndOn = interruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
+            interruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+        val dndAr = if (dndOn) "عدم الإزعاج مفعّل" else "عدم الإزعاج متوقف"
+        return "تمت استعادة الحالة السابقة: ${ringer.arabicName} • $dndAr$extraSuffix"
     }
 
     fun refreshPhoneControlState() {
@@ -377,34 +401,88 @@ class SmartCompanionViewModel(
     fun activateProfile(profile: SmartProfile, triggerSource: String = "User Dashboard") {
         viewModelScope.launch {
             val current = uiState.value
-            if (current.preferences.activeProfileId == profile.id &&
-                current.preferences.simulatedSoundMode == profile.soundMode
-            ) {
-                showBanner(
-                    if (isArabic()) "${profile.name} نشط بالفعل"
-                    else "${profile.name} Profile is already active"
+            val appStrings = stringsFor(current.preferences.language)
+            val localizedName = appStrings.localizedProfileName(profile)
+            val ar = current.preferences.language == AppLanguage.ARABIC
+            val permState = phoneControlManager.refreshPermissionAndDeviceState()
+            if (!permState.hasDndAccess) {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = localizedName,
+                    missingDndAccess = true,
+                    missingExactAlarm = false,
+                    realChangeFailed = true,
+                    failureNote = if (ar) "تعذر تفعيل الوضع: إذن الوصول لعدم الإزعاج غير ممنوح" else "Failed to activate profile: Do Not Disturb access not granted"
                 )
                 return@launch
             }
+
+            val wantsDnd = profile.soundMode == SoundMode.SILENT || profile.id in listOf("profile_study", "profile_sleep")
+            val allowStarred = profile.allowHighPriorityContacts || profile.priorityContactBehavior.contains("Emergency", ignoreCase = true)
+
+            // Save previous state before changing if no active backup exists
+            if (routineBackupStore.getBackup() == null) {
+                val prevRinger = phoneControlManager.currentRingerMode()
+                val prevFilter = phoneControlManager.currentInterruptionFilter()
+                routineBackupStore.onRoutineStarted(
+                    routineId = "mode_${profile.id}",
+                    currentRingerMode = prevRinger,
+                    currentInterruptionFilter = prevFilter,
+                    timestampMillis = System.currentTimeMillis()
+                )
+                _activePhoneBackup.value = routineBackupStore.getBackup()
+            }
+
+            val ringerRes = phoneControlManager.applyRingerMode(profile.soundMode)
+            val dndRes = phoneControlManager.setDoNotDisturbEnabled(wantsDnd, allowStarredContacts = allowStarred)
+
+            if (!ringerRes.success || !dndRes.success) {
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = localizedName,
+                    missingDndAccess = ringerRes.permissionRequired || dndRes.permissionRequired,
+                    missingExactAlarm = false,
+                    realChangeFailed = true,
+                    failureNote = if (ar) "تعذر تطبيق وضع الصوت أو عدم الإزعاج على الهاتف" else "Failed to apply sound mode or Do Not Disturb on device"
+                )
+                return@launch
+            }
+
             val execResult = deviceActionExecutor.execute(
-                DeviceActionCommand.ActivateProfileState(profile.id, profile.name, profile.soundMode)
+                DeviceActionCommand.ActivateProfileState(profile.id, localizedName, profile.soundMode)
             )
             repository.savePhoneState(
                 activeProfileId = profile.id,
                 soundMode = profile.soundMode,
                 isAutomationPaused = current.preferences.isAutomationPaused
             )
+
+            val soundLabel = appStrings.soundModeLabel(profile.soundMode)
+            val dndStr = if (wantsDnd) (if (ar) " • عدم الإزعاج مفعّل" else " • DND On") else ""
+
+            repository.addRoutineLog(
+                RoutineLogEntry(
+                    id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                    routineId = "mode_${profile.id}",
+                    routineName = localizedName,
+                    eventType = RoutineLogEventType.STARTED,
+                    timestampMillis = System.currentTimeMillis(),
+                    ringerMode = profile.soundMode,
+                    dndEnabled = wantsDnd,
+                    interruptionFilter = phoneControlManager.currentInterruptionFilter(),
+                    note = if (ar) "تم تفعيل وضع $localizedName ($soundLabel$dndStr)" else "Activated $localizedName ($soundLabel$dndStr)"
+                )
+            )
+
             repository.logEvent(
-                title = "${profile.name} Profile Activated",
+                title = if (ar) "تم تفعيل وضع: $localizedName" else "$localizedName Profile Activated",
                 category = EventCategory.PROFILE,
                 triggerSource = triggerSource,
-                result = execResult.summary,
-                explanation = "${profile.name} profile enabled (${profile.priorityContactBehavior}).",
-                relatedProfileName = profile.name
+                result = "$soundLabel$dndStr",
+                explanation = if (ar) "تم تفعيل وضع $localizedName ($soundLabel$dndStr)." else "$localizedName profile enabled ($soundLabel$dndStr).",
+                relatedProfileName = localizedName
             )
             showBanner(
-                if (isArabic()) "تم تفعيل وضع ${profile.name} (${profile.soundMode.arabicName})"
-                else "${profile.name} Profile activated (${profile.soundMode.displayName})"
+                if (ar) "تم تفعيل وضع $localizedName ($soundLabel$dndStr)"
+                else "$localizedName Profile activated ($soundLabel$dndStr)"
             )
         }
     }
@@ -438,36 +516,87 @@ class SmartCompanionViewModel(
     fun toggleGlobalAutomationPause() {
         viewModelScope.launch {
             val current = uiState.value
+            val ar = current.preferences.language == AppLanguage.ARABIC
+            val appStrings = stringsFor(current.preferences.language)
             val newPaused = !current.preferences.isAutomationPaused
-            repository.savePhoneState(
-                activeProfileId = current.preferences.activeProfileId,
-                soundMode = current.preferences.simulatedSoundMode,
-                isAutomationPaused = newPaused
-            )
+            var nextProfileId = current.preferences.activeProfileId
+            var nextSoundMode = current.preferences.simulatedSoundMode
+
             if (newPaused) {
                 val backup = routineBackupStore.getBackup()
+                val allRoutines = repository.getAllRoutinesOnce()
+                var restoredRinger: SoundMode? = null
+                var restoredFilter: Int? = null
+                var restoredModeBackup = false
                 backup?.activeRoutineIds?.toList()?.forEach { id ->
-                    val r = repository.getAllRoutinesOnce().firstOrNull { it.id == id }
-                    val name = r?.name ?: id
-                    val outcome = routinePhoneController.applyRoutineEnd(id, name, isArabic())
+                    val name = if (id.startsWith("mode_")) {
+                        val pId = id.removePrefix("mode_")
+                        val prof = current.profiles.firstOrNull { it.id == pId }
+                        if (prof != null) appStrings.localizedProfileName(prof) else appStrings.localizedProfileName(pId, pId)
+                    } else {
+                        val r = allRoutines.firstOrNull { it.id == id }
+                        if (r != null) appStrings.localizedRoutineName(r) else id
+                    }
+                    val outcome = routinePhoneController.applyRoutineEnd(id, name, ar)
                     repository.addRoutineLog(outcome.logEntry)
+                    if (outcome.permissionRequired) {
+                        _savePermissionDialog.value = SavePermissionDialogState(
+                            routineName = name,
+                            missingDndAccess = true,
+                            missingExactAlarm = false,
+                            realChangeFailed = true,
+                            failureNote = outcome.logEntry.note
+                        )
+                    } else if (outcome.success && outcome.logEntry.ringerMode != null) {
+                        restoredRinger = outcome.logEntry.ringerMode
+                        restoredFilter = outcome.logEntry.interruptionFilter
+                        if (id.startsWith("mode_")) restoredModeBackup = true
+                    }
                 }
                 _activePhoneBackup.value = routineBackupStore.getBackup()
+                if (restoredRinger != null) {
+                    if (restoredModeBackup) {
+                        nextProfileId = "profile_personal"
+                        nextSoundMode = restoredRinger!!
+                    }
+                    showRestoreToast(
+                        formatArabicRestoredToast(
+                            restoredRinger!!,
+                            restoredFilter ?: android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                        )
+                    )
+                }
             }
+
+            repository.savePhoneState(
+                activeProfileId = nextProfileId,
+                soundMode = nextSoundMode,
+                isAutomationPaused = newPaused
+            )
+
+            val activeProfileName = current.activeProfile?.let { appStrings.localizedProfileName(it) }
             repository.logEvent(
-                title = if (newPaused) "Global Automation Paused" else "Automation Resumed",
+                title = if (ar) {
+                    if (newPaused) "تم إيقاف الأتمتة مؤقتاً" else "تم استئناف الأتمتة"
+                } else {
+                    if (newPaused) "Global Automation Paused" else "Automation Resumed"
+                },
                 category = EventCategory.AUTOMATION,
-                triggerSource = "Safety Control",
-                result = if (newPaused) "All automatic triggers paused" else "Scheduled & context triggers active",
+                triggerSource = if (ar) "أدوات الأمان" else "Safety Control",
+                result = if (ar) {
+                    if (newPaused) "تم إيقاف المشغلات التلقائية" else "المشغلات المجدولة والسياقية نشطة"
+                } else {
+                    if (newPaused) "All automatic triggers paused" else "Scheduled & context triggers active"
+                },
                 explanation = if (newPaused) {
                     "Safety pause suspended automatic routine triggers while preserving existing rules."
                 } else {
                     "Smart Companion automation resumed normal evaluation."
                 },
-                relatedProfileName = current.activeProfile?.name
+                relatedProfileName = activeProfileName
             )
             showBanner(
-                if (isArabic()) {
+                if (ar) {
                     if (newPaused) "تم إيقاف جميع الأتمتة مؤقتاً" else "تم استئناف الأتمتة"
                 } else {
                     if (newPaused) "All automations paused" else "Automations resumed"
@@ -478,8 +607,14 @@ class SmartCompanionViewModel(
 
     fun restorePreviousPhoneState() {
         viewModelScope.launch {
-            val prev = uiState.value.preferences.previousSnapshot
-            val prevProfileName = uiState.value.profiles.firstOrNull { it.id == prev.activeProfileId }?.name ?: "Personal"
+            val current = uiState.value
+            val ar = current.preferences.language == AppLanguage.ARABIC
+            val appStrings = stringsFor(current.preferences.language)
+            val prev = current.preferences.previousSnapshot
+            val prevProfile = current.profiles.firstOrNull { it.id == prev.activeProfileId }
+            val prevProfileName = prevProfile?.let { appStrings.localizedProfileName(it) }
+                ?: appStrings.localizedProfileName(prev.activeProfileId, "Personal")
+            val prevSoundLabel = appStrings.soundModeLabel(prev.soundMode)
             deviceActionExecutor.execute(
                 DeviceActionCommand.ActivateProfileState(prev.activeProfileId, prevProfileName, prev.soundMode)
             )
@@ -490,17 +625,18 @@ class SmartCompanionViewModel(
                 recordPreviousSnapshot = false
             )
             repository.logEvent(
-                title = "Previous Simulated State Restored",
+                title = if (ar) "تمت استعادة الحالة السابقة" else "Previous State Restored",
                 category = EventCategory.SYSTEM,
-                triggerSource = "Safety Recovery",
-                result = "$prevProfileName • ${prev.soundMode.displayName}",
-                explanation = "Safety Center rolled back simulated phone profile and sound state to the previous snapshot.",
+                triggerSource = if (ar) "استرداد الأمان" else "Safety Recovery",
+                result = "$prevProfileName • $prevSoundLabel",
+                explanation = "Safety Center rolled back phone profile and sound state to the previous snapshot.",
                 relatedProfileName = prevProfileName
             )
             showBanner(
-                if (isArabic()) "تمت استعادة الحالة السابقة: $prevProfileName"
-                else "Restored previous state: $prevProfileName (${prev.soundMode.displayName})"
+                if (ar) "تمت استعادة الحالة السابقة: $prevProfileName ($prevSoundLabel)"
+                else "Restored previous state: $prevProfileName ($prevSoundLabel)"
             )
+            showRestoreToast("تمت استعادة الحالة السابقة: $prevProfileName • ${prev.soundMode.arabicName}")
         }
     }
 
@@ -574,15 +710,83 @@ class SmartCompanionViewModel(
 
     fun restoreDefaultProfiles() {
         viewModelScope.launch {
+            val current = uiState.value
+            val ar = current.preferences.language == AppLanguage.ARABIC
+            val appStrings = stringsFor(current.preferences.language)
+            val backup = routineBackupStore.getBackup()
+            var restoredDetails = ""
+            var targetSoundMode = SoundMode.SOUND
+            var permissionMissingForRestore = false
+
+            if (backup != null) {
+                val stateNow = phoneControlManager.refreshPermissionAndDeviceState()
+                if (stateNow.hasDndAccess) {
+                    phoneControlManager.restoreDeviceState(
+                        ringerMode = backup.previousRingerMode,
+                        interruptionFilter = backup.previousInterruptionFilter
+                    )
+                    val dndOn = backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
+                        backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+                    val soundName = appStrings.soundModeLabel(backup.previousRingerMode)
+                    val dndStr = if (dndOn) (if (ar) " • عدم الإزعاج مفعّل" else " • DND On") else (if (ar) " • عدم الإزعاج متوقف" else " • DND Off")
+                    restoredDetails = if (ar) " — تمت استعادة وضع الصوت ($soundName$dndStr)" else " — Restored audio ($soundName$dndStr)"
+                    targetSoundMode = backup.previousRingerMode
+                    routineBackupStore.clearAll()
+                    _activePhoneBackup.value = null
+
+                    repository.addRoutineLog(
+                        RoutineLogEntry(
+                            id = "rlog_${UUID.randomUUID().toString().take(8)}",
+                            routineId = "restore_defaults",
+                            routineName = if (ar) "استعادة الافتراضي" else "Restore Defaults",
+                            eventType = RoutineLogEventType.ENDED,
+                            timestampMillis = System.currentTimeMillis(),
+                            ringerMode = backup.previousRingerMode,
+                            dndEnabled = dndOn,
+                            interruptionFilter = backup.previousInterruptionFilter,
+                            note = formatArabicRestoredToast(backup.previousRingerMode, backup.previousInterruptionFilter, " والأوضاع الافتراضية")
+                        )
+                    )
+                    showRestoreToast(
+                        formatArabicRestoredToast(
+                            backup.previousRingerMode,
+                            backup.previousInterruptionFilter,
+                            " والأوضاع الافتراضية"
+                        )
+                    )
+                } else {
+                    permissionMissingForRestore = true
+                    _savePermissionDialog.value = SavePermissionDialogState(
+                        routineName = if (ar) "استعادة الافتراضي" else "Restore Defaults",
+                        missingDndAccess = true,
+                        missingExactAlarm = false,
+                        realChangeFailed = true,
+                        failureNote = if (ar) "تعذرت استعادة صوت الهاتف: إذن الوصول لعدم الإزعاج غير ممنوح" else "Could not restore phone state: Do Not Disturb access is not granted"
+                    )
+                }
+            } else {
+                showRestoreToast("تمت استعادة الأوضاع الافتراضية")
+            }
+
             repository.restoreDefaultProfiles()
-            repository.logEvent(
-                title = "Default Profiles Restored",
-                category = EventCategory.SYSTEM,
-                triggerSource = "Safety & Recovery",
-                result = "5 core profiles restored",
-                explanation = "Restored Study, Work, Sleep, Personal, and Custom Focus defaults."
+            repository.savePhoneState(
+                activeProfileId = "profile_personal",
+                soundMode = targetSoundMode,
+                isAutomationPaused = current.preferences.isAutomationPaused,
+                recordPreviousSnapshot = false
             )
-            showBanner(if (isArabic()) "تمت استعادة الأوضاع الافتراضية" else "Default profiles restored")
+            repository.logEvent(
+                title = if (ar) "تمت استعادة الأوضاع الافتراضية" else "Default Profiles Restored",
+                category = EventCategory.SYSTEM,
+                triggerSource = if (ar) "الأمان والاسترداد" else "Safety & Recovery",
+                result = if (ar) "تمت استعادة 5 أوضاع افتراضية$restoredDetails" else "5 core profiles restored$restoredDetails",
+                explanation = if (ar) "تمت استعادة أوضاع الدراسة والعمل والنوم والشخصي والمخصص إلى إعداداتها الأصلية." else "Restored Study, Work, Sleep, Personal, and Custom Focus defaults.",
+                relatedProfileName = appStrings.localizedProfileName("profile_personal", "Personal")
+            )
+            if (!permissionMissingForRestore) {
+                val msg = if (ar) "تمت استعادة الأوضاع الافتراضية$restoredDetails" else "Default profiles restored$restoredDetails"
+                showBanner(msg)
+            }
         }
     }
 
@@ -590,81 +794,99 @@ class SmartCompanionViewModel(
     @JvmOverloads
     fun saveRoutine(routine: SmartRoutine, startImmediately: Boolean = false) {
         viewModelScope.launch {
-            val permStateBeforeSave = phoneControlManager.refreshPermissionAndDeviceState()
-            val missingDndBeforeSave = !permStateBeforeSave.hasDndAccess
-            val missingExactBeforeSave = !(permStateBeforeSave.canScheduleExactAlarms && alarmScheduler.canScheduleExactAlarms())
-            if (missingExactBeforeSave) {
-                _exactAlarmDeniedNotice.value = true
-            }
+            saveRoutineInternal(routine, startImmediately)
+        }
+    }
 
-            repository.upsertRoutine(routine)
-            _routineDraftFromAssistant.value = null
-            repository.logEvent(
-                title = "Saved Routine: ${routine.name}",
-                category = EventCategory.ROUTINE,
-                triggerSource = "Visual Rule Builder",
-                result = routine.trigger.summary,
-                explanation = "Rule saved with ${routine.actions.size} actions and ${routine.exceptions.size} exceptions.",
-                relatedRoutineName = routine.name
+    private suspend fun saveRoutineInternal(
+        routine: SmartRoutine,
+        startImmediately: Boolean = false
+    ): Boolean {
+        val current = uiState.value
+        val appStrings = stringsFor(current.preferences.language)
+        val localizedRoutineName = appStrings.localizedRoutineName(routine)
+        val permStateBeforeSave = phoneControlManager.refreshPermissionAndDeviceState()
+        val missingDndBeforeSave = !permStateBeforeSave.hasDndAccess
+        val missingExactBeforeSave = !(permStateBeforeSave.canScheduleExactAlarms && alarmScheduler.canScheduleExactAlarms())
+        if (missingExactBeforeSave) {
+            _exactAlarmDeniedNotice.value = true
+        }
+
+        repository.upsertRoutine(routine)
+        _routineDraftFromAssistant.value = null
+        repository.logEvent(
+            title = if (isArabic()) "تم حفظ الروتين: $localizedRoutineName" else "Saved Routine: $localizedRoutineName",
+            category = EventCategory.ROUTINE,
+            triggerSource = if (isArabic()) "منشئ القواعد" else "Visual Rule Builder",
+            result = routine.trigger.summary,
+            explanation = "Rule saved with ${routine.actions.size} actions and ${routine.exceptions.size} exceptions.",
+            relatedRoutineName = localizedRoutineName
+        )
+        val allRoutines = repository.getAllRoutinesOnce()
+        val exactDenied = rescheduleRoutinesInternal(allRoutines) || missingExactBeforeSave
+
+        if (startImmediately && routine.isEnabled) {
+            val state = uiState.value
+            // 1. Apply real phone control BEFORE the simulation banner
+            val realOutcome = applyRealPhoneControlForRoutine(
+                routine = routine,
+                profiles = state.profiles,
+                scheduleEndAlarm = true,
+                showMissingDndBanner = false
             )
-            val allRoutines = repository.getAllRoutinesOnce()
-            val exactDenied = rescheduleRoutinesInternal(allRoutines) || missingExactBeforeSave
+            _activePhoneBackup.value = routineBackupStore.getBackup()
 
-            if (startImmediately && routine.isEnabled) {
-                val state = uiState.value
-                // 1. Apply real phone control BEFORE the simulation banner
-                val realOutcome = applyRealPhoneControlForRoutine(
-                    routine = routine,
-                    profiles = state.profiles,
-                    scheduleEndAlarm = true,
-                    showMissingDndBanner = false
-                )
+            val routinesWithSaved = state.routines.filterNot { it.id == routine.id } + routine
+            val output = simulationEngine.evaluate(
+                event = SimulationEvent.ManualRoutine(routine.id),
+                routines = routinesWithSaved,
+                profiles = state.profiles,
+                context = state.preferences.simulatedContext,
+                isAutomationPaused = state.preferences.isAutomationPaused,
+                activeProfileId = state.preferences.activeProfileId,
+                isFocusActive = state.activeFocus.isActive,
+                conflictPolicy = state.preferences.conflictPolicy
+            )
+            _latestTrace.value = output.trace
+            applyEngineOutput(output, showCompletionBanner = false)
 
-                val routinesWithSaved = state.routines.filterNot { it.id == routine.id } + routine
-                val output = simulationEngine.evaluate(
-                    event = SimulationEvent.ManualRoutine(routine.id),
-                    routines = routinesWithSaved,
-                    profiles = state.profiles,
-                    context = state.preferences.simulatedContext,
-                    isAutomationPaused = state.preferences.isAutomationPaused,
-                    activeProfileId = state.preferences.activeProfileId,
-                    isFocusActive = state.activeFocus.isActive,
-                    conflictPolicy = state.preferences.conflictPolicy
-                )
-                _latestTrace.value = output.trace
-                applyEngineOutput(output, showCompletionBanner = false)
-
-                if (realOutcome.success) {
-                    val activatedMsg = output.inAppNotice
-                        ?: if (isArabic()) "تم تفعيل '${routine.name}' على الهاتف" else "${routine.name} activated"
-                    showBanner(activatedMsg)
-                    if (exactDenied) {
-                        _savePermissionDialog.value = SavePermissionDialogState(
-                            routineName = routine.name,
-                            missingDndAccess = false,
-                            missingExactAlarm = true
-                        )
-                    }
+            if (realOutcome.success) {
+                val activatedMsg = if (isArabic()) {
+                    "تم تفعيل '$localizedRoutineName' على الهاتف"
                 } else {
-                    // Never show an "activated" message when real change failed; show persistent dialog
+                    output.inAppNotice ?: "$localizedRoutineName activated"
+                }
+                showBanner(activatedMsg)
+                if (exactDenied) {
                     _savePermissionDialog.value = SavePermissionDialogState(
-                        routineName = routine.name,
-                        missingDndAccess = realOutcome.permissionRequired || missingDndBeforeSave,
-                        missingExactAlarm = exactDenied,
-                        realChangeFailed = true,
-                        permissionRequiredForRun = realOutcome.permissionRequired,
-                        failureNote = realOutcome.logEntry.note
+                        routineName = localizedRoutineName,
+                        missingDndAccess = false,
+                        missingExactAlarm = true
                     )
                 }
-            } else if (missingDndBeforeSave || exactDenied) {
-                _savePermissionDialog.value = SavePermissionDialogState(
-                    routineName = routine.name,
-                    missingDndAccess = missingDndBeforeSave,
-                    missingExactAlarm = exactDenied
-                )
+                return true
             } else {
-                showBanner(if (isArabic()) "تم حفظ الروتين '${routine.name}'" else "Saved routine '${routine.name}'")
+                // Never show an "activated" message when real change failed; show persistent dialog
+                _savePermissionDialog.value = SavePermissionDialogState(
+                    routineName = localizedRoutineName,
+                    missingDndAccess = realOutcome.permissionRequired || missingDndBeforeSave,
+                    missingExactAlarm = exactDenied,
+                    realChangeFailed = true,
+                    permissionRequiredForRun = realOutcome.permissionRequired,
+                    failureNote = realOutcome.logEntry.note
+                )
+                return false
             }
+        } else if (missingDndBeforeSave || exactDenied) {
+            _savePermissionDialog.value = SavePermissionDialogState(
+                routineName = localizedRoutineName,
+                missingDndAccess = missingDndBeforeSave,
+                missingExactAlarm = exactDenied
+            )
+            return true
+        } else {
+            showBanner(if (isArabic()) "تم حفظ الروتين '$localizedRoutineName'" else "Saved routine '$localizedRoutineName'")
+            return true
         }
     }
 
@@ -800,35 +1022,59 @@ class SmartCompanionViewModel(
 
     fun toggleRoutineEnabled(routine: SmartRoutine) {
         viewModelScope.launch {
+            val current = uiState.value
+            val ar = current.preferences.language == AppLanguage.ARABIC
+            val appStrings = stringsFor(current.preferences.language)
+            val localizedName = appStrings.localizedRoutineName(routine)
             val updated = routine.copy(isEnabled = !routine.isEnabled)
             repository.upsertRoutine(updated)
             if (!updated.isEnabled) {
                 alarmScheduler.cancelRoutineAlarms(updated.id)
                 val backup = routineBackupStore.getBackup()
                 if (backup != null && backup.activeRoutineIds.contains(updated.id)) {
-                    val outcome = routinePhoneController.applyRoutineEnd(updated.id, updated.name, isArabic())
+                    val outcome = routinePhoneController.applyRoutineEnd(updated.id, localizedName, ar)
                     repository.addRoutineLog(outcome.logEntry)
                     _activePhoneBackup.value = routineBackupStore.getBackup()
+                    if (outcome.permissionRequired) {
+                        _savePermissionDialog.value = SavePermissionDialogState(
+                            routineName = localizedName,
+                            missingDndAccess = true,
+                            missingExactAlarm = false,
+                            realChangeFailed = true,
+                            failureNote = outcome.logEntry.note
+                        )
+                    } else if (outcome.success && outcome.logEntry.ringerMode != null) {
+                        showRestoreToast(
+                            formatArabicRestoredToast(
+                                outcome.logEntry.ringerMode,
+                                outcome.logEntry.interruptionFilter ?: android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                            )
+                        )
+                    }
                 }
             }
             val exactDenied = rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
             repository.logEvent(
-                title = "${updated.name} ${if (updated.isEnabled) "Enabled" else "Disabled"}",
+                title = if (ar) "$localizedName: ${if (updated.isEnabled) "مفعّل" else "معطّل"}" else "${updated.name} ${if (updated.isEnabled) "Enabled" else "Disabled"}",
                 category = EventCategory.ROUTINE,
-                triggerSource = "Smart Routines",
-                result = if (updated.isEnabled) "Active in automation engine" else "Excluded from automation",
+                triggerSource = if (ar) "الروتينات الذكية" else "Smart Routines",
+                result = if (ar) {
+                    if (updated.isEnabled) "نشط في محرك الأتمتة" else "متوقف عن الأتمتة"
+                } else {
+                    if (updated.isEnabled) "Active in automation engine" else "Excluded from automation"
+                },
                 explanation = "Routine toggle updated by user.",
-                relatedRoutineName = updated.name
+                relatedRoutineName = localizedName
             )
             if (exactDenied && updated.isEnabled) {
                 showBanner(
-                    if (isArabic()) "تعذّر جدولة المنبه الدقيق: يرجى السماح بإذن المنبهات الدقيقة"
+                    if (ar) "تعذّر جدولة المنبه الدقيق: يرجى السماح بإذن المنبهات الدقيقة"
                     else "Exact alarm permission denied — enable Alarms & reminders"
                 )
             } else {
                 showBanner(
-                    if (isArabic()) {
-                        "${updated.name}: ${if (updated.isEnabled) "مفعّل" else "معطّل"}"
+                    if (ar) {
+                        "$localizedName: ${if (updated.isEnabled) "مفعّل" else "معطّل"}"
                     } else {
                         "${updated.name} ${if (updated.isEnabled) "enabled" else "disabled"}"
                     }
@@ -998,26 +1244,37 @@ class SmartCompanionViewModel(
                 _savePermissionDialog.value = SavePermissionDialogState(
                     routineName = if (isArabic()) "استعادة الحالة" else "Restore State",
                     missingDndAccess = true,
-                    missingExactAlarm = false
+                    missingExactAlarm = false,
+                    realChangeFailed = true
                 )
                 return@launch
             }
-            val res = phoneControlManager.restoreDeviceState(
+            phoneControlManager.restoreDeviceState(
                 ringerMode = backup.previousRingerMode,
                 interruptionFilter = backup.previousInterruptionFilter
             )
+            val hadModeBackup = backup.activeRoutineIds.any { it.startsWith("mode_") }
             routineBackupStore.clearAll()
             _activePhoneBackup.value = null
+            if (hadModeBackup) {
+                repository.savePhoneState(
+                    activeProfileId = "profile_personal",
+                    soundMode = backup.previousRingerMode,
+                    isAutomationPaused = uiState.value.preferences.isAutomationPaused,
+                    recordPreviousSnapshot = false
+                )
+            }
             val dndOn = backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
                 backup.previousInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+            val arabicToast = formatArabicRestoredToast(backup.previousRingerMode, backup.previousInterruptionFilter)
             val msg = if (isArabic()) {
-                val dndStr = if (dndOn) "عدم الإزعاج مفعّل" else "عدم الإزعاج متوقف"
-                "تمت استعادة الحالة السابقة: ${backup.previousRingerMode.arabicName} • $dndStr"
+                arabicToast
             } else {
                 val dndStr = if (dndOn) "DND On" else "DND Off"
                 "Restored previous state: ${backup.previousRingerMode.displayName} • $dndStr"
             }
             showBanner(msg)
+            showRestoreToast(arabicToast)
             repository.addRoutineLog(
                 RoutineLogEntry(
                     id = "rlog_${UUID.randomUUID().toString().take(8)}",
@@ -1133,22 +1390,28 @@ class SmartCompanionViewModel(
             return
         }
 
+        val appStrings = stringsFor(state.preferences.language)
+        val ar = state.preferences.language == AppLanguage.ARABIC
+        val localizedRoutineName = appStrings.localizedRoutineName(routine)
         val targetProfileId = output.targetProfileId ?: state.preferences.activeProfileId
         val targetProfile = state.profiles.firstOrNull { it.id == targetProfileId }
+        val localizedProfileName = targetProfile?.let { appStrings.localizedProfileName(it) }
+            ?: appStrings.localizedProfileName(targetProfileId, "Profile")
         val newSoundMode = output.targetSoundMode ?: targetProfile?.soundMode ?: state.preferences.simulatedSoundMode
+        val localizedSoundLabel = appStrings.soundModeLabel(newSoundMode)
         val newPaused = output.setAutomationPaused ?: state.preferences.isAutomationPaused
 
-        // Route simulated execution through the DeviceActionExecutor abstraction
+        // Route execution through the DeviceActionExecutor abstraction
         deviceActionExecutor.execute(
             DeviceActionCommand.ActivateProfileState(
                 profileId = targetProfileId,
-                profileName = targetProfile?.name ?: "Profile",
+                profileName = localizedProfileName,
                 soundMode = newSoundMode
             )
         )
         if (output.inAppNotice != null) {
             deviceActionExecutor.execute(
-                DeviceActionCommand.DeliverInAppNotice(routine.name, output.inAppNotice)
+                DeviceActionCommand.DeliverInAppNotice(localizedRoutineName, output.inAppNotice)
             )
         }
 
@@ -1169,24 +1432,26 @@ class SmartCompanionViewModel(
             startFocusSessionInternal(
                 minutes = output.startFocusMinutes,
                 profile = targetProfile ?: state.activeProfile,
-                triggerSource = "Routine: ${routine.name}"
+                triggerSource = if (ar) "روتين: $localizedRoutineName" else "Routine: $localizedRoutineName"
             )
         } else if (output.endFocusSession && state.activeFocus.isActive) {
             endFocusSession(completedNaturally = false)
         }
 
         repository.logEvent(
-            title = "Routine Executed: ${routine.name}",
+            title = if (ar) "تم تشغيل الروتين: $localizedRoutineName" else "Routine Executed: $localizedRoutineName",
             category = if (output.trace.conflictDetected) EventCategory.CONFLICT else EventCategory.ROUTINE,
             triggerSource = output.trace.triggerReceived,
-            result = "${targetProfile?.name ?: "Profile"} • ${newSoundMode.displayName}",
+            result = "$localizedProfileName • $localizedSoundLabel",
             explanation = output.trace.finalResult,
-            relatedRoutineName = routine.name,
-            relatedProfileName = targetProfile?.name
+            relatedRoutineName = localizedRoutineName,
+            relatedProfileName = localizedProfileName
         )
 
         if (showCompletionBanner) {
-            showBanner(output.inAppNotice ?: "${routine.name} -> ${targetProfile?.name ?: ""} (${newSoundMode.displayName})")
+            showBanner(
+                output.inAppNotice ?: "$localizedRoutineName -> $localizedProfileName ($localizedSoundLabel)"
+            )
         }
     }
 
@@ -1275,9 +1540,11 @@ class SmartCompanionViewModel(
         type: InterruptionType,
         isRepeatCaller: Boolean
     ): InterruptionDecision {
+        val currentLanguage = uiState.value.preferences.language
+        val appStrings = stringsFor(currentLanguage)
         val activeProfile = uiState.value.activeProfile ?: SmartProfile(
             id = "profile_personal",
-            name = "Personal",
+            name = appStrings.localizedProfileName("profile_personal", "Personal"),
             description = "",
             iconKey = com.example.models.ProfileIconKey.PERSONAL,
             accentColorHex = 0xFF0D7C7B,
@@ -1289,6 +1556,7 @@ class SmartCompanionViewModel(
             isDefault = true,
             isProtected = true
         )
+        val localizedActiveProfileName = appStrings.localizedProfileName(activeProfile)
         val decision = simulationEngine.simulateIncomingInterruption(
             contact = contact,
             interruptionType = type,
@@ -1304,17 +1572,18 @@ class SmartCompanionViewModel(
         }
 
         viewModelScope.launch {
+            val ar = currentLanguage == AppLanguage.ARABIC
             repository.logEvent(
-                title = if (decision.isAllowed) {
-                    "Interruption Allowed: ${contact.name}"
+                title = if (ar) {
+                    if (decision.isAllowed) "مقاطعة مسموحة: ${contact.name}" else "مقاطعة محجوبة: ${contact.name}"
                 } else {
-                    "Interruption Blocked: ${contact.name}"
+                    if (decision.isAllowed) "Interruption Allowed: ${contact.name}" else "Interruption Blocked: ${contact.name}"
                 },
                 category = EventCategory.CONTACT_EXCEPTION,
                 triggerSource = "Simulated Incoming ${type.displayName}",
-                result = if (decision.isAllowed) "Allowed (${decision.priorityLevel.displayName})" else "Blocked by ${activeProfile.name}",
+                result = if (decision.isAllowed) "Allowed (${decision.priorityLevel.displayName})" else "Blocked by $localizedActiveProfileName",
                 explanation = decision.explanation,
-                relatedProfileName = activeProfile.name
+                relatedProfileName = localizedActiveProfileName
             )
         }
         return decision
@@ -1323,9 +1592,12 @@ class SmartCompanionViewModel(
     // --- Focus Session Timer ---
     fun startFocusSession(minutes: Int, profile: SmartProfile, activateProfileNow: Boolean = true) {
         viewModelScope.launch {
+            val currentLang = uiState.value.preferences.language
+            val appStrings = stringsFor(currentLang)
+            val localizedProfileName = appStrings.localizedProfileName(profile)
             if (activateProfileNow) {
                 deviceActionExecutor.execute(
-                    DeviceActionCommand.ActivateProfileState(profile.id, profile.name, profile.soundMode)
+                    DeviceActionCommand.ActivateProfileState(profile.id, localizedProfileName, profile.soundMode)
                 )
                 repository.savePhoneState(
                     activeProfileId = profile.id,
@@ -1333,10 +1605,10 @@ class SmartCompanionViewModel(
                     isAutomationPaused = uiState.value.preferences.isAutomationPaused
                 )
             }
-            startFocusSessionInternal(minutes, profile, "Focus Session Control")
+            startFocusSessionInternal(minutes, profile, if (currentLang == AppLanguage.ARABIC) "التحكم بالتركيز" else "Focus Session Control")
             showBanner(
-                if (isArabic()) "بدأت جلسة التركيز: ${minutes} د (${profile.name})"
-                else "Focus session started: ${minutes}m (${profile.name})"
+                if (currentLang == AppLanguage.ARABIC) "بدأت جلسة التركيز: ${minutes} د ($localizedProfileName)"
+                else "Focus session started: ${minutes}m ($localizedProfileName)"
             )
         }
     }
@@ -1347,6 +1619,11 @@ class SmartCompanionViewModel(
         triggerSource: String
     ) {
         val safeProfile = profile ?: return
+        val currentLang = uiState.value.preferences.language
+        val ar = currentLang == AppLanguage.ARABIC
+        val appStrings = stringsFor(currentLang)
+        val localizedProfileName = appStrings.localizedProfileName(safeProfile)
+        val localizedSoundLabel = appStrings.soundModeLabel(safeProfile.soundMode)
         val totalSecs = (minutes.coerceIn(1, 240)) * 60
         focusTimerJob?.cancel()
         _lastCompletedFocusSummary.value = null
@@ -1354,19 +1631,19 @@ class SmartCompanionViewModel(
             isActive = true,
             isPaused = false,
             profileId = safeProfile.id,
-            profileName = safeProfile.name,
+            profileName = localizedProfileName,
             totalSeconds = totalSecs,
             remainingSeconds = totalSecs,
             simulatedInterruptionsBlocked = 0,
             startedAtMillis = System.currentTimeMillis()
         )
         repository.logEvent(
-            title = "Focus Session Started (${minutes}m)",
+            title = if (ar) "بدء جلسة تركيز (${minutes} د)" else "Focus Session Started (${minutes}m)",
             category = EventCategory.FOCUS,
             triggerSource = triggerSource,
-            result = "${safeProfile.name} • ${safeProfile.soundMode.displayName}",
-            explanation = "Countdown started for $minutes minutes under ${safeProfile.name} profile.",
-            relatedProfileName = safeProfile.name
+            result = "$localizedProfileName • $localizedSoundLabel",
+            explanation = if (ar) "بدأ العد التنازلي لمدة $minutes دقيقة ضمن وضع $localizedProfileName." else "Countdown started for $minutes minutes under $localizedProfileName profile.",
+            relatedProfileName = localizedProfileName
         )
         startTimerTicker()
     }
@@ -1502,10 +1779,10 @@ class SmartCompanionViewModel(
 
         viewModelScope.launch {
             val lower = trimmed.lowercase().trim()
-            val promptRange = RoutineTimeParser.parseTimeRange(lower)
+            val promptDetailedRange = RoutineTimeParser.parseDetailedTimeRange(lower)
             val isClarificationAnswer = isClarificationFollowUpAnswer(lower) ||
-                (_clarificationTurnCount.value > 0 && promptRange != null && !isStandaloneRoutineCreation(lower))
-            val isStandalone = !isClarificationAnswer && (promptRange != null || isStandaloneRoutineCreation(lower))
+                (_clarificationTurnCount.value > 0 && promptDetailedRange != null && !isStandaloneRoutineCreation(lower))
+            val isStandalone = !isClarificationAnswer && (promptDetailedRange != null || isStandaloneRoutineCreation(lower))
 
             // Requirement 3: A new standalone request (not a follow-up answer) must start a fresh draft
             if (isStandalone) {
@@ -1541,7 +1818,7 @@ class SmartCompanionViewModel(
                     val fallbackProposal = LocalDemoAssistantEngine().processPrompt(trimmed, snapshot).proposal
                     fallbackProposal ?: run {
                         val draft = _pendingRoutineDraft.value
-                        if (draft != null) {
+                        if (draft != null && draft.scheduleStartTime.isNotBlank() && draft.scheduleEndTime.isNotBlank()) {
                             val isAr = isArabic()
                             val soundAction = draft.actions.firstOrNull { it.type == ActionType.SET_SOUND_MODE }
                             val soundMode = soundAction?.let { action ->
@@ -1560,12 +1837,12 @@ class SmartCompanionViewModel(
                                     SoundMode.SOUND -> "Set phone to Sound"
                                 }
                             }
-                            val startLabel = draft.scheduleStartTime.ifBlank { TimeUtils.formatTime12h(draft.trigger.hour, draft.trigger.minute, isAr) }
-                            val endLabel = draft.scheduleEndTime.ifBlank { TimeUtils.formatTime12h((draft.trigger.hour + 2) % 24, draft.trigger.minute, isAr) }
+                            val startLabel = draft.scheduleStartTime
+                            val endLabel = draft.scheduleEndTime
                             val triggerSummary = if (isAr) "يومياً من $startLabel إلى $endLabel" else "Daily from $startLabel to $endLabel"
                             val exceptionSummary = if (isAr) "جهات الطوارئ مستثناة دائماً ولا يمكن حجبها" else "Emergency contacts always allowed"
                             RoutineProposal(
-                                routine = draft.copy(scheduleStartTime = startLabel, scheduleEndTime = endLabel),
+                                routine = draft.copy(enableDoNotDisturb = draft.enableDoNotDisturb || soundMode == SoundMode.SILENT),
                                 triggerSummary = triggerSummary,
                                 endTimeLabel = endLabel,
                                 actionSummary = actionSummary,
@@ -1584,29 +1861,39 @@ class SmartCompanionViewModel(
                 _clarificationTurnCount.value = 0
             } else if (_pendingRoutineDraft.value == null && reply.proposal == null) {
                 val soundMode = RoutineTimeParser.parseExplicitSoundMode(lower) ?: SoundMode.SILENT
-                val startH = promptRange?.first ?: 20
-                val endH = promptRange?.second ?: ((startH + 2) % 24)
+                val hasExplicitRange = promptDetailedRange != null
+                val startH = promptDetailedRange?.startHour ?: 0
+                val startM = promptDetailedRange?.startMinute ?: 0
+                val endH = promptDetailedRange?.endHour ?: 0
+                val endM = promptDetailedRange?.endMinute ?: 0
                 val isAr = isArabic()
                 _pendingRoutineDraft.value = SmartRoutine(
                     id = "routine_draft_${UUID.randomUUID().toString().take(6)}",
                     name = if (isAr) "روتين مخصص" else "Custom Routine",
                     description = trimmed,
                     isEnabled = true,
-                    trigger = RuleTrigger(type = TriggerType.SPECIFIC_TIME, hour = startH, minute = 0, dayFilter = DayFilter.EVERY_DAY, summary = ""),
+                    trigger = RuleTrigger(
+                        type = if (hasExplicitRange) TriggerType.SPECIFIC_TIME else TriggerType.SPECIFIC_DAYS,
+                        hour = startH,
+                        minute = startM,
+                        dayFilter = DayFilter.EVERY_DAY,
+                        summary = ""
+                    ),
                     conditions = emptyList(),
                     actions = listOf(
-                        RuleAction(ActionType.ACTIVATE_PROFILE, "profile_study", "Activate profile"),
-                        RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, "Set simulated ${soundMode.displayName} Mode")
+                        RuleAction(ActionType.ACTIVATE_PROFILE, "profile_study", if (isAr) "تفعيل وضع الدراسة" else "Activate Study profile"),
+                        RuleAction(ActionType.SET_SOUND_MODE, soundMode.name, if (isAr) "ضبط صوت الهاتف: ${soundMode.arabicName}" else "Set ${soundMode.displayName} Mode")
                     ),
                     exceptions = listOf(RuleException(ExceptionType.EMERGENCY_CONTACTS, "Allow Emergency contacts")),
                     priority = 5,
-                    scheduleStartTime = if (promptRange != null) TimeUtils.formatTime12h(startH, 0, isAr) else "",
-                    scheduleEndTime = if (promptRange != null) TimeUtils.formatTime12h(endH, 0, isAr) else "",
+                    scheduleStartTime = if (hasExplicitRange) TimeUtils.formatTime12h(startH, startM, isAr) else "",
+                    scheduleEndTime = if (hasExplicitRange) TimeUtils.formatTime12h(endH, endM, isAr) else "",
                     targetProfileId = "profile_study",
                     lastExecutionResult = "",
                     lastExecutedAtMillis = null,
                     executionCount = 0,
-                    skippedCount = 0
+                    skippedCount = 0,
+                    enableDoNotDisturb = (soundMode == SoundMode.SILENT)
                 )
             }
 
@@ -1640,14 +1927,32 @@ class SmartCompanionViewModel(
 
     fun confirmAssistantProposal(messageId: String, proposal: RoutineProposal) {
         viewModelScope.launch {
-            repository.upsertRoutine(proposal.routine)
-            rescheduleRoutinesInternal(repository.getAllRoutinesOnce())
+            val now = System.currentTimeMillis()
+            val hasSilent = proposal.routine.actions.any {
+                it.type == ActionType.SET_SOUND_MODE && it.targetValue == SoundMode.SILENT.name
+            }
+            val routineToSave = proposal.routine.copy(
+                enableDoNotDisturb = proposal.routine.enableDoNotDisturb || hasSilent
+            )
+            val isActive = RoutineAlarmCalculator.isCurrentlyActive(routineToSave, now)
+            val appliedReal = saveRoutineInternal(routineToSave, startImmediately = isActive)
             _pendingRoutineDraft.value = null
             _clarificationTurnCount.value = 0
+
+            val appStrings = stringsFor(uiState.value.preferences.language)
+            val localizedRoutineName = appStrings.localizedRoutineName(routineToSave)
             val note = if (isArabic()) {
-                "تم التأكيد وإضافة '${proposal.routine.name}' إلى الروتينات الذكية."
+                when {
+                    isActive && appliedReal -> "تم التأكيد وإضافة '$localizedRoutineName' وتطبيقه فوراً على الهاتف."
+                    isActive && !appliedReal -> "تم حفظ '$localizedRoutineName' — يلزم منح إذن عدم الإزعاج لتطبيقه فوراً على الهاتف."
+                    else -> "تم التأكيد وجدولة '$localizedRoutineName' ضمن الروتينات الذكية."
+                }
             } else {
-                "Confirmed & added '${proposal.routine.name}' to Smart Routines."
+                when {
+                    isActive && appliedReal -> "Confirmed, scheduled & applied '$localizedRoutineName' on your phone immediately."
+                    isActive && !appliedReal -> "Saved '$localizedRoutineName' — grant Do Not Disturb permission to apply it immediately on your phone."
+                    else -> "Confirmed & scheduled '$localizedRoutineName' in Smart Routines."
+                }
             }
             _assistantMessages.update { list ->
                 list.map { msg ->
@@ -1657,16 +1962,12 @@ class SmartCompanionViewModel(
                 }
             }
             repository.logEvent(
-                title = "Assistant Created Routine: ${proposal.routine.name}",
+                title = if (isArabic()) "أنشأ المساعد روتين: $localizedRoutineName" else "Assistant Created Routine: $localizedRoutineName",
                 category = EventCategory.ASSISTANT,
-                triggerSource = "AI Assistant Confirmation",
+                triggerSource = if (isArabic()) "تأكيد المساعد الذكي" else "AI Assistant Confirmation",
                 result = proposal.triggerSummary,
-                explanation = "Routine confirmed by user from natural-language proposal.",
-                relatedRoutineName = proposal.routine.name
-            )
-            showBanner(
-                if (isArabic()) "تم إنشاء الروتين '${proposal.routine.name}'!"
-                else "Routine '${proposal.routine.name}' created!"
+                explanation = "Routine confirmed by user from natural-language proposal.${if (isActive && appliedReal) " Applied immediately on device." else ""}",
+                relatedRoutineName = localizedRoutineName
             )
         }
     }
@@ -2084,7 +2385,8 @@ class SmartCompanionViewModel(
         val dndAlert: String?,
         val exactDenied: Boolean,
         val saveDialog: SavePermissionDialogState?,
-        val phoneBackup: SavedPhoneBackup?
+        val phoneBackup: SavedPhoneBackup?,
+        val toastMessage: String?
     )
 
     class Factory(

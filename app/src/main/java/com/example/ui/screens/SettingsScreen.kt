@@ -244,10 +244,31 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.testTag("phone_control_section")
             ) {
-                SectionHeader(
-                    title = strings.phoneControlTitle,
-                    subtitle = strings.phoneControlSubtitle
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        SectionHeader(
+                            title = strings.phoneControlTitle,
+                            subtitle = strings.phoneControlSubtitle
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = StatusEmerald.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = if (strings.isArabic) "فعلي" else "Real",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusEmerald,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
 
                 CompanionCard(
                     containerColor = if (phoneControl.hasDndAccess) {
@@ -518,7 +539,30 @@ fun SettingsScreen(
                     val activeBackup = state.activePhoneBackup
                     val prevRinger = activeBackup?.previousRingerMode ?: currentRinger
 
-                    Text(strings.manualOverrideTitle, style = MaterialTheme.typography.titleSmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            strings.manualOverrideTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            color = StatusEmerald.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (strings.isArabic) "فعلي" else "Real",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusEmerald,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(2.dp))
                     Text(
                         strings.manualOverrideExplain,
@@ -575,6 +619,7 @@ fun SettingsScreen(
 
                     // Conflict Check
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -586,8 +631,21 @@ fun SettingsScreen(
                         )
                         Text(
                             "${strings.conflictWarningsPrefix} (${conflicts.size})",
-                            style = MaterialTheme.typography.titleSmall
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
                         )
+                        Surface(
+                            color = StatusIndigo.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (strings.isArabic) "محاكاة" else "Simulation",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusIndigo,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(

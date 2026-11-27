@@ -224,10 +224,11 @@ object RoutineJsonValidator {
 
         val dayFilter = collapseDayFilters(parsedDays)
 
-        var startHour = 20
+        var startHour = 0
         var startMinute = 0
-        var endHour = 22
+        var endHour = 0
         var endMinute = 0
+        var hasClockWindow = false
         var place = SimulatedLocation.LIBRARY
 
         when (triggerTypeRaw) {
@@ -237,30 +238,33 @@ object RoutineJsonValidator {
                 val startParsed = parseTime24(startStr)
                 val endParsed = parseTime24(endStr)
                 val promptDetailedRange = RoutineTimeParser.parseDetailedTimeRange(originalPrompt)
+                val hasExplicitPeriod = RoutineTimeParser.hasExplicitPeriod(originalPrompt)
 
-                val shouldUsePromptTimes = promptDetailedRange != null && (
+                val shouldUsePromptHours = promptDetailedRange != null && (
                     startParsed == null ||
                         endParsed == null ||
                         (startParsed.first == endParsed.first && startParsed.second == endParsed.second) ||
                         (startParsed.first % 12) != (promptDetailedRange.startHour % 12) ||
                         (endParsed.first % 12) != (promptDetailedRange.endHour % 12) ||
-                        RoutineTimeParser.hasExplicitPeriod(originalPrompt)
+                        hasExplicitPeriod
                     )
 
-                if (shouldUsePromptTimes && promptDetailedRange != null &&
+                if (shouldUsePromptHours && promptDetailedRange != null &&
                     !(promptDetailedRange.startHour == promptDetailedRange.endHour && promptDetailedRange.startMinute == promptDetailedRange.endMinute)
                 ) {
                     startHour = promptDetailedRange.startHour
                     startMinute = promptDetailedRange.startMinute
                     endHour = promptDetailedRange.endHour
                     endMinute = promptDetailedRange.endMinute
+                    hasClockWindow = true
                 } else if (startParsed != null && endParsed != null &&
                     !(startParsed.first == endParsed.first && startParsed.second == endParsed.second)
                 ) {
                     startHour = startParsed.first
-                    startMinute = startParsed.second
+                    startMinute = promptDetailedRange?.startMinute ?: startParsed.second
                     endHour = endParsed.first
-                    endMinute = endParsed.second
+                    endMinute = promptDetailedRange?.endMinute ?: endParsed.second
+                    hasClockWindow = true
                 } else {
                     return RoutineJsonValidationResult.NeedsClarification(
                         if (isArabic) "ما وقت البداية والنهاية المحددان لهذا الروتين؟"
@@ -277,6 +281,7 @@ object RoutineJsonValidator {
                 }
                 val startStr = if (triggerObj.isNull("startTime")) "" else triggerObj.optString("startTime", "").trim()
                 val endStr = if (triggerObj.isNull("endTime")) "" else triggerObj.optString("endTime", "").trim()
+                val promptDetailedRange = RoutineTimeParser.parseDetailedTimeRange(originalPrompt)
                 if (startStr.isNotEmpty()) {
                     val startParsed = parseTime24(startStr)
                         ?: return RoutineJsonValidationResult.NeedsClarification(
@@ -284,7 +289,7 @@ object RoutineJsonValidator {
                             else "What time should this routine start?"
                         )
                     startHour = startParsed.first
-                    startMinute = startParsed.second
+                    startMinute = promptDetailedRange?.startMinute ?: startParsed.second
                 }
                 if (endStr.isNotEmpty()) {
                     val endParsed = parseTime24(endStr)
@@ -293,8 +298,9 @@ object RoutineJsonValidator {
                             else "What time should this routine end?"
                         )
                     endHour = endParsed.first
-                    endMinute = endParsed.second
+                    endMinute = promptDetailedRange?.endMinute ?: endParsed.second
                 }
+                hasClockWindow = startStr.isNotEmpty() && endStr.isNotEmpty()
             }
             "place_enter", "place_exit" -> {
                 val placeStr = if (triggerObj.isNull("place")) "" else triggerObj.optString("place", "").trim()
@@ -390,8 +396,8 @@ object RoutineJsonValidator {
             else -> TriggerType.LOCATION_EXITED
         }
 
-        val startLabel = TimeUtils.formatTime12h(startHour, startMinute, isArabic)
-        val endLabel = TimeUtils.formatTime12h(endHour, endMinute, isArabic)
+        val startLabel = if (hasClockWindow) TimeUtils.formatTime12h(startHour, startMinute, isArabic) else ""
+        val endLabel = if (hasClockWindow) TimeUtils.formatTime12h(endHour, endMinute, isArabic) else ""
 
         val triggerSummary = when (triggerType) {
             TriggerType.SPECIFIC_TIME -> {
@@ -448,6 +454,12 @@ object RoutineJsonValidator {
             else "Emergency contacts always allowed"
         }
 
+        val enableDnd = effectiveActionMode == "silent" ||
+            effectiveActionMode == "focus" ||
+            originalPrompt.contains("عدم الإزعاج") ||
+            originalPrompt.contains("do not disturb", ignoreCase = true) ||
+            originalPrompt.contains("dnd", ignoreCase = true)
+
         val routine = SmartRoutine(
             id = "routine_ai_${UUID.randomUUID().toString().take(6)}",
             name = name,
@@ -466,7 +478,8 @@ object RoutineJsonValidator {
             lastExecutionResult = if (isArabic) "بانتظار موافقتك" else "Awaiting your approval",
             lastExecutedAtMillis = null,
             executionCount = 0,
-            skippedCount = 0
+            skippedCount = 0,
+            enableDoNotDisturb = enableDnd
         )
 
         val conflictWarning = RoutineConflictChecker.findConflictWarning(

@@ -123,7 +123,6 @@ fun ExactTimeEntrySection(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             val formattedTime = RoutineTimeInputValidator.formatTimeForSetting(
@@ -150,10 +149,11 @@ fun ExactTimeEntrySection(
                 },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
-                    .weight(1f, fill = false)
+                    .weight(1f)
                     .testTag("${testTagPrefix}_formatted_time")
             )
             if (trailingAction != null) {
+                Spacer(Modifier.width(8.dp))
                 trailingAction()
             }
         }
@@ -427,14 +427,19 @@ fun DurationMinutesSelector(
 @Preview(name = "Arabic RTL - FontScale 1.0", locale = "ar", fontScale = 1.0f, showBackground = true)
 @Composable
 fun ExactTimeEntrySectionArabicPreview10() {
-    SmartCompanionTheme {
+    SmartCompanionTheme(language = AppLanguage.ARABIC) {
         ExactTimeEntrySection(
             label = "وقت البداية",
             hour24 = 15,
             minute = 40,
             strings = stringsFor(AppLanguage.ARABIC),
             testTagPrefix = "start_time",
-            onTimeChanged = { _, _ -> }
+            onTimeChanged = { _, _ -> },
+            trailingAction = {
+                androidx.compose.material3.FilledTonalButton(onClick = {}) {
+                    Text(stringsFor(AppLanguage.ARABIC).nowBtn)
+                }
+            }
         )
     }
 }
@@ -442,15 +447,21 @@ fun ExactTimeEntrySectionArabicPreview10() {
 @Preview(name = "Arabic RTL - FontScale 1.3", locale = "ar", fontScale = 1.3f, showBackground = true)
 @Composable
 fun ExactTimeEntrySectionArabicPreview13() {
-    SmartCompanionTheme {
+    SmartCompanionTheme(language = AppLanguage.ARABIC) {
         ExactTimeEntrySection(
             label = "وقت البداية",
             hour24 = 15,
             minute = 40,
             strings = stringsFor(AppLanguage.ARABIC),
             testTagPrefix = "start_time",
-            onTimeChanged = { _, _ -> }
+            onTimeChanged = { _, _ -> },
+            trailingAction = {
+                androidx.compose.material3.FilledTonalButton(onClick = {}) {
+                    Text(stringsFor(AppLanguage.ARABIC).nowBtn)
+                }
+            }
         )
     }
 }
+
 

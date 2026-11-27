@@ -578,6 +578,7 @@ class RoutineSchedulingAndRestoreTest {
                 assertTrue(updatedLogs.any { it.routineId == "r_vm_blocked" && it.eventType == RoutineLogEventType.PERMISSION_DENIED })
             } finally {
                 job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
             }
         } finally {
             db.close()
@@ -670,6 +671,7 @@ class RoutineSchedulingAndRestoreTest {
         )
         assertTrue(backupStore.isDndPermissionMissing())
         assertTrue(shadowNm.allNotifications.isNotEmpty())
+        prefs.resetDefaults(preserveOnboarding = false)
     }
 
     @Test
@@ -780,6 +782,7 @@ class RoutineSchedulingAndRestoreTest {
                 assertFalse("Arabic activated banner must not appear when real change failed: $banner", banner.contains("تم تفعيل"))
             } finally {
                 job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
             }
         } finally {
             db.close()
@@ -841,4 +844,291 @@ class RoutineSchedulingAndRestoreTest {
         assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, gateway.interruptionFilter)
         assertNull(backupStore.getBackup())
     }
+
+    private suspend fun awaitMainLooper(maxIterations: Int = 100, condition: suspend () -> Boolean) {
+        var wait = 0
+        while (!condition() && wait < maxIterations) {
+            Shadows.shadowOf(Looper.getMainLooper()).idle()
+            delay(25)
+            wait++
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test
+    fun `ViewModel activateProfile changes real phone state for built-in and custom modes and gates on DND permission`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val prefs = PreferencesManager(context)
+            prefs.setLanguage(AppLanguage.ARABIC)
+            val repository = SmartCompanionRepository(db, prefs)
+
+            val fakeGateway = FakePhoneControlGateway(
+                granted = true,
+                ringerMode = SoundMode.SOUND,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL
+            )
+            val viewModel = SmartCompanionViewModel(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(fakeGateway),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler()
+            )
+            val job = launch(Dispatchers.Unconfined) { viewModel.uiState.collect {} }
+            try {
+                awaitMainLooper { viewModel.uiState.value.isReady && viewModel.uiState.value.preferences.language == AppLanguage.ARABIC }
+                assertTrue(viewModel.uiState.value.isReady)
+
+                // Activate built-in Study profile -> SILENT + DND Priority + backup saved + Arabic logs
+                val studyProfile = viewModel.uiState.value.profiles.first { it.id == "profile_study" }
+                viewModel.activateProfile(studyProfile, "Smart Profiles")
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.SILENT && !viewModel.uiState.value.feedbackBanner.isNullOrBlank()
+                }
+
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
+                assertNotNull(viewModel.uiState.value.activePhoneBackup)
+                assertEquals(SoundMode.SOUND, viewModel.uiState.value.activePhoneBackup?.previousRingerMode)
+
+                val arBanner = viewModel.uiState.value.feedbackBanner ?: ""
+                assertTrue("Expected Arabic Study name in banner, got: $arBanner", arBanner.contains("الدراسة"))
+                assertFalse("Must not leak English mode name in Arabic mode: $arBanner", arBanner.contains("Study"))
+
+                // Activate newly created custom profile (Vibrate) -> VIBRATE + DND Off
+                val customMode = SmartProfile(
+                    id = "profile_custom_test",
+                    name = "مكتبة هادئة",
+                    description = "وضع مخصص",
+                    iconKey = com.example.models.ProfileIconKey.CUSTOM,
+                    accentColorHex = 0xFF0284C7,
+                    soundMode = SoundMode.VIBRATE,
+                    allowedCategories = emptyList(),
+                    priorityContactBehavior = "Emergency allowed",
+                    allowHighPriorityContacts = true,
+                    defaultFocusMinutes = 40,
+                    isDefault = false,
+                    isProtected = false
+                )
+                viewModel.saveProfile(customMode)
+                viewModel.activateProfile(customMode, "Smart Profiles")
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.VIBRATE &&
+                        fakeGateway.interruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL
+                }
+                assertEquals(SoundMode.VIBRATE, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, fakeGateway.interruptionFilter)
+
+                // Missing DND access -> opens permission dialog instead of failing silently
+                fakeGateway.granted = false
+                val sleepProfile = viewModel.uiState.value.profiles.first { it.id == "profile_sleep" }
+                viewModel.activateProfile(sleepProfile, "Smart Profiles")
+                awaitMainLooper { viewModel.uiState.value.savePermissionDialog != null }
+                val dlg = viewModel.uiState.value.savePermissionDialog
+                assertNotNull(dlg)
+                assertTrue(dlg!!.missingDndAccess)
+                assertTrue(dlg.realChangeFailed)
+            } finally {
+                job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `ViewModel restore defaults, restore previous state, disable active routine, and global pause restore real phone and emit Arabic toast`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val prefs = PreferencesManager(context)
+            prefs.setLanguage(AppLanguage.ARABIC)
+            val repository = SmartCompanionRepository(db, prefs)
+
+            val fakeGateway = FakePhoneControlGateway(
+                granted = true,
+                ringerMode = SoundMode.VIBRATE,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL
+            )
+            val viewModel = SmartCompanionViewModel(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(fakeGateway),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler()
+            )
+            val job = launch(Dispatchers.Unconfined) { viewModel.uiState.collect {} }
+            try {
+                awaitMainLooper { viewModel.uiState.value.isReady && viewModel.uiState.value.preferences.language == AppLanguage.ARABIC }
+                assertTrue(viewModel.uiState.value.isReady)
+
+                // 1. Activate Sleep mode then Restore Defaults -> restores VIBRATE + ALL and emits Arabic Toast
+                val sleepProfile = viewModel.uiState.value.profiles.first { it.id == "profile_sleep" }
+                viewModel.activateProfile(sleepProfile)
+                awaitMainLooper { viewModel.uiState.value.preferences.activeProfileId == "profile_sleep" }
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
+
+                viewModel.restoreDefaultProfiles()
+                awaitMainLooper {
+                    viewModel.uiState.value.preferences.activeProfileId == "profile_personal" &&
+                        viewModel.uiState.value.toastMessage != null
+                }
+                assertEquals(SoundMode.VIBRATE, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, fakeGateway.interruptionFilter)
+                assertNull(viewModel.uiState.value.activePhoneBackup)
+                assertEquals("profile_personal", viewModel.uiState.value.preferences.activeProfileId)
+                val restoreDefaultsToast = viewModel.uiState.value.toastMessage ?: ""
+                assertTrue("Expected Arabic restore toast, got: $restoreDefaultsToast", restoreDefaultsToast.contains("تمت استعادة الحالة السابقة"))
+                assertTrue(restoreDefaultsToast.contains("اهتزاز"))
+                viewModel.clearToastMessage()
+
+                // 2. Manual change -> Restore Previous State -> emits Arabic toast
+                viewModel.setRealManualRingerMode(SoundMode.SILENT)
+                awaitMainLooper { fakeGateway.ringerMode == SoundMode.SILENT }
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+
+                viewModel.restoreRealPreviousState()
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.VIBRATE && viewModel.uiState.value.toastMessage != null
+                }
+                assertEquals(SoundMode.VIBRATE, fakeGateway.ringerMode)
+                val manualToast = viewModel.uiState.value.toastMessage ?: ""
+                assertTrue("Expected Arabic manual restore toast, got: $manualToast", manualToast.contains("تمت استعادة الحالة السابقة"))
+                viewModel.clearToastMessage()
+
+                // 3. Start routine now -> disable routine while active -> restores previous state & emits Arabic toast
+                val activeRoutine = buildRoutine(
+                    id = "r_toggle_restore",
+                    name = "تركيز مسائي",
+                    soundMode = SoundMode.SILENT,
+                    enableDoNotDisturb = true,
+                    endTime = "23:55"
+                )
+                viewModel.saveRoutine(activeRoutine, startImmediately = true)
+                awaitMainLooper { fakeGateway.ringerMode == SoundMode.SILENT }
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+
+                viewModel.toggleRoutineEnabled(activeRoutine)
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.VIBRATE && viewModel.uiState.value.toastMessage != null
+                }
+                assertEquals(SoundMode.VIBRATE, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, fakeGateway.interruptionFilter)
+                val disableToast = viewModel.uiState.value.toastMessage ?: ""
+                assertTrue("Expected Arabic disable restore toast, got: $disableToast", disableToast.contains("تمت استعادة الحالة السابقة"))
+                viewModel.clearToastMessage()
+
+                // 4. Pause automation while routine active -> restores previous state & emits Arabic toast
+                val pausedRoutine = activeRoutine.copy(id = "r_pause_restore", isEnabled = true)
+                viewModel.saveRoutine(pausedRoutine, startImmediately = true)
+                awaitMainLooper { fakeGateway.ringerMode == SoundMode.SILENT }
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+
+                viewModel.toggleGlobalAutomationPause()
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.VIBRATE && viewModel.uiState.value.toastMessage != null
+                }
+                assertEquals(SoundMode.VIBRATE, fakeGateway.ringerMode)
+                val pauseToast = viewModel.uiState.value.toastMessage ?: ""
+                assertTrue("Expected Arabic pause restore toast, got: $pauseToast", pauseToast.contains("تمت استعادة الحالة السابقة"))
+            } finally {
+                job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `ViewModel confirmAssistantProposal saves, schedules, and applies active proposal immediately on real phone`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val prefs = PreferencesManager(context)
+            prefs.setLanguage(AppLanguage.ARABIC)
+            val repository = SmartCompanionRepository(db, prefs)
+
+            val fakeGateway = FakePhoneControlGateway(
+                granted = true,
+                ringerMode = SoundMode.SOUND,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL
+            )
+            val fakeScheduler = NoOpRoutineAlarmScheduler().apply { exactAlarmAllowed = true }
+            val viewModel = SmartCompanionViewModel(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(fakeGateway),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = fakeScheduler
+            )
+            val job = launch(Dispatchers.Unconfined) { viewModel.uiState.collect {} }
+            try {
+                awaitMainLooper { viewModel.uiState.value.isReady && viewModel.uiState.value.preferences.language == AppLanguage.ARABIC }
+                assertTrue(viewModel.uiState.value.isReady)
+
+                // Window covering current minute (-5m .. +55m)
+                val nowCal = Calendar.getInstance()
+                val startCal = (nowCal.clone() as Calendar).apply { add(Calendar.MINUTE, -5) }
+                val endCal = (nowCal.clone() as Calendar).apply { add(Calendar.MINUTE, 55) }
+                val activeProposalRoutine = buildRoutine(
+                    id = "r_assistant_now",
+                    name = "تركيز المساعد",
+                    startHour = startCal.get(Calendar.HOUR_OF_DAY),
+                    startMinute = startCal.get(Calendar.MINUTE),
+                    endTime = String.format(Locale.US, "%02d:%02d", endCal.get(Calendar.HOUR_OF_DAY), endCal.get(Calendar.MINUTE)),
+                    dayFilter = DayFilter.EVERY_DAY,
+                    soundMode = SoundMode.SILENT,
+                    enableDoNotDisturb = false
+                )
+                val proposal = com.example.models.RoutineProposal(
+                    routine = activeProposalRoutine,
+                    triggerSummary = "يومياً الآن",
+                    endTimeLabel = activeProposalRoutine.scheduleEndTime,
+                    actionSummary = "صامت",
+                    exceptionSummary = "جهات الطوارئ مستثناة"
+                )
+
+                viewModel.confirmAssistantProposal("msg_test_1", proposal)
+                awaitMainLooper {
+                    repository.routineLogs.first().any { it.routineId == "r_assistant_now" && it.eventType == RoutineLogEventType.STARTED }
+                }
+
+                val saved = repository.getRoutineById("r_assistant_now")
+                assertNotNull(saved)
+                assertTrue(saved!!.enableDoNotDisturb)
+                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
+                assertTrue(fakeScheduler.immediateEndAlarms.any { it.first == "r_assistant_now" })
+                val logs = repository.routineLogs.first()
+                assertTrue(logs.any { it.routineId == "r_assistant_now" && it.eventType == RoutineLogEventType.STARTED })
+            } finally {
+                job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `Arabic mode localizes profile and mode names without leaking English names`() {
+        val arStrings = com.example.utils.stringsFor(AppLanguage.ARABIC)
+        assertEquals("شخصي", arStrings.localizedProfileName("profile_personal", "Personal"))
+        assertEquals("الدراسة", arStrings.localizedProfileName("profile_study", "Study"))
+        assertEquals("النوم", arStrings.localizedProfileName("profile_sleep", "Sleep"))
+        assertEquals("العمل", arStrings.localizedProfileName("profile_work", "Work"))
+        assertEquals("تركيز مخصص", arStrings.localizedProfileName("profile_custom", "Custom"))
+        assertEquals("الدراسة (صامت)", arStrings.localizedProfileName("unknown_id", "Study (Silent)"))
+        assertEquals("شخصي (صوت)", arStrings.localizedProfileName("unknown_id", "Personal (Sound)"))
+        assertEquals("ضبط وضع صوت الهاتف", arStrings.actionTypeLabel(ActionType.SET_SOUND_MODE))
+    }
 }
+
