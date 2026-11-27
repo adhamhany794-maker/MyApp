@@ -160,17 +160,29 @@ class AndroidPhoneControlGateway(
             if (enabled) {
                 if (allowStarredContacts) {
                     val existing = runCatching { nm.notificationPolicy }.getOrNull()
-                    val categories = (existing?.priorityCategories ?: 0) or
+                    var categories = (existing?.priorityCategories ?: 0) or
                         NotificationManager.Policy.PRIORITY_CATEGORY_CALLS or
                         NotificationManager.Policy.PRIORITY_CATEGORY_MESSAGES or
                         NotificationManager.Policy.PRIORITY_CATEGORY_REPEAT_CALLERS or
                         NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS
-                    val policy = NotificationManager.Policy(
-                        categories,
-                        NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
-                        NotificationManager.Policy.PRIORITY_SENDERS_STARRED
-                    )
-                    nm.setNotificationPolicy(policy)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        categories = categories or NotificationManager.Policy.PRIORITY_CATEGORY_CONVERSATIONS
+                    }
+                    val policy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        NotificationManager.Policy(
+                            categories,
+                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
+                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
+                            NotificationManager.Policy.CONVERSATION_SENDERS_IMPORTANT
+                        )
+                    } else {
+                        NotificationManager.Policy(
+                            categories,
+                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
+                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED
+                        )
+                    }
+                    runCatching { nm.setNotificationPolicy(policy) }
                 }
                 nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             } else {
@@ -325,6 +337,13 @@ class PhoneControlManager(
             success = success,
             permissionRequired = !gateway.isNotificationPolicyAccessGranted(),
             state = refreshed
+        )
+    }
+
+    fun applyEmergencyBypass(): PhoneControlActionResult {
+        return restoreDeviceState(
+            ringerMode = SoundMode.SOUND,
+            interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL
         )
     }
 

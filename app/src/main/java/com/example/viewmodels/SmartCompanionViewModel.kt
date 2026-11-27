@@ -10,6 +10,8 @@ import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
 import com.example.assistant.RoutineTimeParser
+import com.example.automation.EmergencyBypassController
+import com.example.automation.EmergencyPhoneNumberUtils
 import com.example.automation.InMemoryRoutineStateBackupStore
 import com.example.automation.NoOpRoutineAlarmScheduler
 import com.example.automation.RoutineAlarmCalculator
@@ -24,7 +26,9 @@ import com.example.models.ActivityEvent
 import com.example.models.AppLanguage
 import com.example.models.AssistantMessage
 import com.example.models.ConflictResolutionPolicy
+import com.example.models.ContactPriority
 import com.example.models.DayFilter
+import com.example.models.EmergencyBypassOutcome
 import com.example.models.EventCategory
 import com.example.models.ExceptionType
 import com.example.models.FocusSessionRecord
@@ -89,6 +93,11 @@ data class SavePermissionDialogState(
     val permissionRequiredForRun: Boolean = false,
     val failureNote: String? = null
 )
+
+sealed interface SaveContactResult {
+    data class Saved(val contact: PriorityContact) : SaveContactResult
+    data class Duplicate(val existingContact: PriorityContact) : SaveContactResult
+}
 
 data class SmartCompanionUiState(
     val isReady: Boolean = false,
@@ -417,7 +426,8 @@ class SmartCompanionViewModel(
             }
 
             val wantsDnd = profile.soundMode == SoundMode.SILENT || profile.id in listOf("profile_study", "profile_sleep")
-            val allowStarred = profile.allowHighPriorityContacts || profile.priorityContactBehavior.contains("Emergency", ignoreCase = true)
+            val hasEmergencyContacts = current.contacts.any { it.priorityLevel == ContactPriority.EMERGENCY }
+            val allowStarred = hasEmergencyContacts || profile.allowHighPriorityContacts || profile.priorityContactBehavior.contains("Emergency", ignoreCase = true)
 
             // Save previous state before changing if no active backup exists
             if (routineBackupStore.getBackup() == null) {
@@ -898,11 +908,13 @@ class SmartCompanionViewModel(
     ): com.example.automation.RoutineControlOutcome {
         val now = System.currentTimeMillis()
         val ar = isArabic()
+        val hasEmergencyContacts = uiState.value.contacts.any { it.priorityLevel == ContactPriority.EMERGENCY }
         val outcome = routinePhoneController.applyRoutineStart(
             routine = routine,
             profiles = profiles,
             isArabic = ar,
-            timestampMillis = now
+            timestampMillis = now,
+            hasEmergencyContacts = hasEmergencyContacts
         )
         if (outcome.permissionRequired) {
             repository.addRoutineLog(outcome.logEntry)
@@ -978,11 +990,13 @@ class SmartCompanionViewModel(
             )
 
             repository.upsertRoutine(debugRoutine)
+            val hasEmergencyContacts = uiState.value.contacts.any { it.priorityLevel == ContactPriority.EMERGENCY }
             val outcome = routinePhoneController.applyRoutineStart(
                 routine = debugRoutine,
                 profiles = uiState.value.profiles,
                 isArabic = ar,
-                timestampMillis = now
+                timestampMillis = now,
+                hasEmergencyContacts = hasEmergencyContacts
             )
             repository.addRoutineLog(outcome.logEntry)
 
@@ -1507,18 +1521,144 @@ class SmartCompanionViewModel(
     }
 
     // --- Priority Contacts & Interruption Simulator ---
+    private val emergencyBypassController by lazy {
+        EmergencyBypassController(phoneControlManager = phoneControlManager)
+    }
+
     fun saveContact(contact: PriorityContact) {
         viewModelScope.launch {
-            repository.upsertContact(contact)
-            repository.logEvent(
-                title = "Updated Contact: ${contact.name}",
-                category = EventCategory.CONTACT_EXCEPTION,
-                triggerSource = "Priority Contacts",
-                result = "${contact.priorityLevel.displayName} (${if (contact.isEnabled) "Enabled" else "Paused"})",
-                explanation = "Configured simulated exception behavior for ${contact.name}."
-            )
-            showBanner(if (isArabic()) "تم حفظ جهة الاتصال '${contact.name}'" else "Saved contact '${contact.name}'")
+            saveContactChecked(contact)
         }
+    }
+
+    suspend fun saveContactChecked(contact: PriorityContact): SaveContactResult {
+        val ar = isArabic()
+        val existingContacts = repository.getAllContactsOnce()
+        val normalizedPhone = EmergencyPhoneNumberUtils.normalizePhoneNumber(contact.phoneNumber)
+        val duplicate = if (normalizedPhone.isNotBlank()) {
+            EmergencyPhoneNumberUtils.findDuplicateByNumber(
+                phoneNumber = normalizedPhone,
+                existingContacts = existingContacts,
+                excludingId = contact.id
+            )
+        } else {
+            null
+        }
+        if (duplicate != null) {
+            val dupMsg = if (ar) {
+                "هذا الرقم مسجّل بالفعل باسم '${duplicate.name}'"
+            } else {
+                "This phone number is already saved under '${duplicate.name}'"
+            }
+            showBanner(dupMsg)
+            showRestoreToast(dupMsg)
+            return SaveContactResult.Duplicate(duplicate)
+        }
+
+        val cleanedContact = contact.copy(
+            name = contact.name.trim(),
+            phoneNumber = contact.phoneNumber.trim()
+        )
+        repository.upsertContact(cleanedContact)
+        val statusSuffix = if (cleanedContact.priorityLevel == ContactPriority.EMERGENCY) {
+            " • هيوصلك دايما"
+        } else {
+            ""
+        }
+        repository.logEvent(
+            title = if (ar) "تم حفظ جهة الاتصال: ${cleanedContact.name}" else "Saved Contact: ${cleanedContact.name}",
+            category = EventCategory.CONTACT_EXCEPTION,
+            triggerSource = if (ar) "جهات الطوارئ" else "Priority Contacts",
+            result = "${cleanedContact.priorityLevel.displayName}$statusSuffix",
+            explanation = if (ar) {
+                "جهة اتصال للطوارئ (${cleanedContact.phoneNumber.ifBlank { "بدون رقم" }}) — هيوصلك دايما."
+            } else {
+                "Configured emergency/priority contact (${cleanedContact.phoneNumber.ifBlank { "no phone number" }})."
+            }
+        )
+        val savedMsg = if (ar) {
+            if (cleanedContact.priorityLevel == ContactPriority.EMERGENCY) {
+                "تم حفظ '${cleanedContact.name}' في الطوارئ — هيوصلك دايما"
+            } else {
+                "تم حفظ جهة الاتصال '${cleanedContact.name}'"
+            }
+        } else {
+            "Saved contact '${cleanedContact.name}'"
+        }
+        showBanner(savedMsg)
+        return SaveContactResult.Saved(cleanedContact)
+    }
+
+    fun savePickedPhoneContact(name: String, phoneNumber: String) {
+        viewModelScope.launch {
+            savePickedEmergencyContact(name, phoneNumber)
+        }
+    }
+
+    suspend fun savePickedEmergencyContact(name: String, phoneNumber: String): SaveContactResult {
+        val cleanName = name.trim().ifBlank { phoneNumber.trim() }
+        val initials = cleanName.split(" ")
+            .filter { it.isNotBlank() }
+            .take(2)
+            .joinToString("") { it.first().uppercase() }
+            .ifEmpty { "EC" }
+        val contact = PriorityContact(
+            id = "contact_${UUID.randomUUID().toString().take(8)}",
+            name = cleanName,
+            initials = initials,
+            relationship = if (isArabic()) "جهة اتصال من الهاتف" else "Phone Contact",
+            priorityLevel = ContactPriority.EMERGENCY,
+            allowedInterruptions = listOf(
+                InterruptionType.CALL,
+                InterruptionType.MESSAGE,
+                InterruptionType.REPEAT_CALLER
+            ),
+            isEnabled = true,
+            allowRepeatCallers = true,
+            phoneNumber = phoneNumber.trim()
+        )
+        return saveContactChecked(contact)
+    }
+
+    fun evaluateIncomingEmergencyContact(
+        senderName: String?,
+        senderPhoneNumber: String?,
+        interruptionType: InterruptionType,
+        isStarredInOs: Boolean = false
+    ): EmergencyBypassOutcome {
+        val current = uiState.value
+        val ar = current.preferences.language == AppLanguage.ARABIC
+        val outcome = emergencyBypassController.handleIncomingCommunication(
+            senderName = senderName,
+            senderPhoneNumber = senderPhoneNumber,
+            interruptionType = interruptionType,
+            contacts = current.contacts,
+            isStarredInOs = isStarredInOs,
+            isArabic = ar
+        )
+        if (outcome.isEmergency && outcome.allowed && outcome.matchedContact != null) {
+            val activeName = current.activeProfile?.let { stringsFor(current.preferences.language).localizedProfileName(it) }
+                ?: current.preferences.activeProfileId
+            _lastInterruption.value = InterruptionDecision(
+                contactName = outcome.matchedContact.name,
+                priorityLevel = ContactPriority.EMERGENCY,
+                interruptionType = interruptionType,
+                isAllowed = true,
+                activeProfileName = activeName,
+                explanation = outcome.explanation
+            )
+            viewModelScope.launch {
+                repository.logEvent(
+                    title = if (ar) "تجاوز طوارئ: ${outcome.matchedContact.name}" else "Emergency Bypass: ${outcome.matchedContact.name}",
+                    category = EventCategory.CONTACT_EXCEPTION,
+                    triggerSource = if (outcome.usedOsDndMechanism) "OS DND Priority" else "App Emergency Fallback",
+                    result = if (ar) "هيوصلك دايما" else "Always gets through",
+                    explanation = outcome.explanation,
+                    relatedProfileName = activeName
+                )
+            }
+        }
+        return outcome
     }
 
     fun deleteContact(contact: PriorityContact) {

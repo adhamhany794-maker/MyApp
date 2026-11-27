@@ -6,6 +6,7 @@ import android.content.Intent
 import com.example.data.PreferencesManager
 import com.example.data.local.AppDatabase
 import com.example.models.AppLanguage
+import com.example.models.ContactPriority
 import com.example.models.EventCategory
 import com.example.repositories.SmartCompanionRepository
 import com.example.simulation.AndroidPhoneControlGateway
@@ -47,6 +48,8 @@ class RoutineAlarmReceiver : BroadcastReceiver() {
         val isArabic = appPrefs.language == AppLanguage.ARABIC
         val routine = repository.getRoutineById(routineId)
         val profiles = repository.getAllProfilesOnce()
+        val contacts = repository.getAllContactsOnce()
+        val hasEmergencyContacts = contacts.any { it.priorityLevel == ContactPriority.EMERGENCY }
 
         val phoneControlManager = PhoneControlManager(AndroidPhoneControlGateway(context))
         val backupStore = SharedPreferencesRoutineStateBackupStore(context)
@@ -60,7 +63,8 @@ class RoutineAlarmReceiver : BroadcastReceiver() {
                         routine = routine,
                         profiles = profiles,
                         isArabic = isArabic,
-                        timestampMillis = nowMillis
+                        timestampMillis = nowMillis,
+                        hasEmergencyContacts = hasEmergencyContacts
                     )
                     repository.addRoutineLog(outcome.logEntry)
                     repository.upsertRoutine(

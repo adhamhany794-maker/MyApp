@@ -209,7 +209,8 @@ class RoutinePhoneController(
         routine: SmartRoutine,
         profiles: List<SmartProfile>,
         isArabic: Boolean,
-        timestampMillis: Long = System.currentTimeMillis()
+        timestampMillis: Long = System.currentTimeMillis(),
+        hasEmergencyContacts: Boolean = true
     ): RoutineControlOutcome {
         val targetSoundMode = resolveTargetSoundMode(routine, profiles)
         val wantsDnd = routine.enableDoNotDisturb
@@ -231,7 +232,7 @@ class RoutinePhoneController(
             )
         }
 
-        val allowStarred = routine.exceptions.any {
+        val allowStarred = hasEmergencyContacts || routine.exceptions.any {
             it.type == ExceptionType.EMERGENCY_CONTACTS || it.type == ExceptionType.PRIORITY_CONTACTS
         }
 

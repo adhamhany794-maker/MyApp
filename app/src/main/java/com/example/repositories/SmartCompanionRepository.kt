@@ -59,6 +59,9 @@ class SmartCompanionRepository(
     suspend fun getAllProfilesOnce(): List<SmartProfile> =
         db.profileDao().getAllOnce().map { it.toDomain() }
 
+    suspend fun getAllContactsOnce(): List<PriorityContact> =
+        db.contactDao().getAllOnce().map { it.toDomain() }
+
     suspend fun ensureSeeded() {
         if (db.profileDao().count() == 0) {
             db.profileDao().upsertAll(DemoSeedData.defaultProfiles().map { it.toEntity() })

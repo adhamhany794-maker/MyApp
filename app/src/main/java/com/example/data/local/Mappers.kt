@@ -180,7 +180,8 @@ object EntityMappers {
                 .getOrDefault(ContactPriority.NORMAL),
             allowedInterruptions = interruptions,
             isEnabled = isEnabled,
-            allowRepeatCallers = allowRepeatCallers
+            allowRepeatCallers = allowRepeatCallers,
+            phoneNumber = phoneNumber
         )
     }
 
@@ -196,7 +197,8 @@ object EntityMappers {
             priorityLevel = priorityLevel.name,
             allowedInterruptionsJson = arr.toString(),
             isEnabled = isEnabled,
-            allowRepeatCallers = allowRepeatCallers
+            allowRepeatCallers = allowRepeatCallers,
+            phoneNumber = phoneNumber
         )
     }
 

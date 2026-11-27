@@ -85,4 +85,74 @@ object RoutineNotificationHelper {
             NotificationManagerCompat.from(context).notify(DND_ACCESS_NOTIFICATION_ID, notification)
         }
     }
+
+    private const val EMERGENCY_BYPASS_CHANNEL_ID = "emergency_contacts_bypass_alerts"
+    private const val EMERGENCY_BYPASS_NOTIFICATION_ID = 9002
+
+    fun showEmergencyBypassAlert(
+        context: Context,
+        contactName: String,
+        phoneNumber: String,
+        isCall: Boolean,
+        isArabic: Boolean
+    ) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelName = if (isArabic) "تنبيهات جهات الطوارئ" else "Emergency Contact Alerts"
+            val channel = NotificationChannel(
+                EMERGENCY_BYPASS_CHANNEL_ID,
+                channelName,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = if (isArabic) {
+                    "تنبيهات عاجلة لجهات الطوارئ تتجاوز الصامت وعدم الإزعاج"
+                } else {
+                    "Urgent alerts from emergency contacts that bypass Silent and Do Not Disturb"
+                }
+                setBypassDnd(true)
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+        }
+
+        val title = if (isArabic) {
+            if (isCall) "مكالمة طوارئ: $contactName" else "رسالة طوارئ: $contactName"
+        } else {
+            if (isCall) "Emergency call: $contactName" else "Emergency message: $contactName"
+        }
+        val body = if (isArabic) {
+            val numPart = if (phoneNumber.isNotBlank()) " ($phoneNumber)" else ""
+            "جهة طوارئ$numPart — هيوصلك دايما رغم أي روتين أو وضع صامت."
+        } else {
+            val numPart = if (phoneNumber.isNotBlank()) " ($phoneNumber)" else ""
+            "Emergency contact$numPart bypassed active routine/Silent mode."
+        }
+
+        val category = if (isCall) NotificationCompat.CATEGORY_CALL else NotificationCompat.CATEGORY_MESSAGE
+
+        val notification = NotificationCompat.Builder(context, EMERGENCY_BYPASS_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(category)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .build()
+
+        runCatching {
+            NotificationManagerCompat.from(context).notify(EMERGENCY_BYPASS_NOTIFICATION_ID, notification)
+        }
+    }
 }

@@ -299,6 +299,7 @@ abstract class AppStrings {
     abstract val addContactTitle: String
     abstract val editContactTitle: String
     abstract val contactNameLabel: String
+    abstract val contactPhoneLabel: String
     abstract val contactRelLabel: String
     abstract val contactPriorityLabel: String
     abstract val contactTypesLabel: String
@@ -307,6 +308,14 @@ abstract class AppStrings {
     abstract val removeContactTitle: String
     abstract val removeContactMsg: String
     abstract val removeBtn: String
+    abstract val chooseFromPhoneContactsBtn: String
+    abstract val addManuallyBtn: String
+    abstract val contactsPermDialogTitle: String
+    abstract val contactsPermDialogBody: String
+    abstract val contactsPermAllowBtn: String
+    abstract val contactsPermDeniedTitle: String
+    abstract val contactsPermDeniedBody: String
+    abstract val emergencyAlwaysReachesStatus: String
 
     // Notification Intelligence
     abstract val notifSubtitle: String
@@ -1010,16 +1019,17 @@ private object EnglishAppStrings : AppStrings() {
     override val simTraceExceptions = "Exceptions Checked"
     override val simTraceActions = "Actions Selected"
     override val simTraceFinal = "Final Simulated Result"
-    override val contactsSubtitle = "Emergency callers are never silenced by any routine (synthetic demo)."
+    override val contactsSubtitle = "Emergency callers and messages bypass any active routine, Silent, DND, or Sleep mode."
     override val interruptionTesterTitle = "Incoming Interruption Tester"
     override val repeatCallerLabel = "Simulate repeat caller (2nd call in 3m)"
     override val testCallBtn = "Test Call"
     override val testMsgBtn = "Test Message"
     override val allowedUpper = "ALLOWED"
     override val blockedUpper = "BLOCKED"
-    override val addContactTitle = "Add Synthetic Contact"
+    override val addContactTitle = "Add Emergency / Priority Contact"
     override val editContactTitle = "Edit Contact"
     override val contactNameLabel = "Name *"
+    override val contactPhoneLabel = "Phone Number"
     override val contactRelLabel = "Relationship Label"
     override val contactPriorityLabel = "Priority Level"
     override val contactTypesLabel = "Allowed Interruption Types"
@@ -1028,6 +1038,14 @@ private object EnglishAppStrings : AppStrings() {
     override val removeContactTitle = "Remove Priority Contact?"
     override val removeContactMsg = "Remove this contact from your priority list?"
     override val removeBtn = "Remove"
+    override val chooseFromPhoneContactsBtn = "Choose from phone contacts"
+    override val addManuallyBtn = "Add manually"
+    override val contactsPermDialogTitle = "Contacts Permission (إذن جهات الاتصال)"
+    override val contactsPermDialogBody = "Allow access to phone contacts to pick an emergency contact and save their name and number automatically.\n\nيحتاج التطبيق إلى إذن قراءة جهات الاتصال لتتمكن من اختيار جهة طوارئ وحفظ اسمها ورقمها تلقائياً حتى تصلك مكالماتها وإشعاراتها دائماً. يمكنك الإضافة يدوياً بدون الإذن."
+    override val contactsPermAllowBtn = "Allow / السماح"
+    override val contactsPermDeniedTitle = "Permission Denied"
+    override val contactsPermDeniedBody = "Contacts permission was denied. You can still add emergency contacts manually.\n\nتم رفض إذن جهات الاتصال، ولا يزال بإمكانك إضافة جهات الطوارئ يدوياً."
+    override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
     override val notifSubtitle = "Synthetic demonstration data — does not read real OS notifications."
     override val simulatedAlertsLabel = "Simulated Alerts"
     override val importantLabel = "Important"
@@ -1450,16 +1468,17 @@ private object ArabicAppStrings : AppStrings() {
     override val simTraceExceptions = "الاستثناءات المطبّقة"
     override val simTraceActions = "الإجراءات المختارة"
     override val simTraceFinal = "النتيجة النهائية المحاكاة"
-    override val contactsSubtitle = "جهات الطوارئ لا تتأثر بأي روتين أو وضع صامت (جهات تجريبية)."
+    override val contactsSubtitle = "جهات الطوارئ تصلك مكالماتها وإشعاراتها دائماً وتجتاز أي روتين أو وضع صامت أو عدم إزعاج."
     override val interruptionTesterTitle = "اختبار المقاطعات الواردة"
     override val repeatCallerLabel = "محاكاة متصل متكرر (مكالمة ثانية خلال 3 دقائق)"
     override val testCallBtn = "اختبار مكالمة"
     override val testMsgBtn = "اختبار رسالة"
     override val allowedUpper = "مسموح"
     override val blockedUpper = "محجوب"
-    override val addContactTitle = "إضافة جهة اتصال تجريبية"
+    override val addContactTitle = "إضافة جهة طوارئ أو أولوية"
     override val editContactTitle = "تعديل جهة الاتصال"
     override val contactNameLabel = "الاسم *"
+    override val contactPhoneLabel = "رقم الهاتف"
     override val contactRelLabel = "صفة العلاقة"
     override val contactPriorityLabel = "مستوى الأولوية"
     override val contactTypesLabel = "أنواع المقاطعة المسموحة"
@@ -1468,6 +1487,14 @@ private object ArabicAppStrings : AppStrings() {
     override val removeContactTitle = "إزالة جهة الاتصال؟"
     override val removeContactMsg = "هل تريد إزالة جهة الاتصال من قائمة الأولوية؟"
     override val removeBtn = "إزالة"
+    override val chooseFromPhoneContactsBtn = "اختيار من جهات اتصال الهاتف"
+    override val addManuallyBtn = "إضافة يدوياً"
+    override val contactsPermDialogTitle = "إذن الوصول إلى جهات الاتصال"
+    override val contactsPermDialogBody = "يحتاج التطبيق إلى إذن قراءة جهات الاتصال لتتمكن من اختيار جهة طوارئ وحفظ اسمها ورقمها تلقائياً حتى تصلك مكالماتها وإشعاراتها دائماً. يمكنك أيضاً الإضافة يدوياً في أي وقت إذا رفضت الإذن."
+    override val contactsPermAllowBtn = "السماح والاختيار"
+    override val contactsPermDeniedTitle = "تم رفض الإذن"
+    override val contactsPermDeniedBody = "لم يتم منح إذن جهات الاتصال. يمكنك الاستمرار في إضافة جهات الطوارئ وحفظ أرقامها يدوياً."
+    override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
     override val notifSubtitle = "بيانات تجريبية محاكاة — لا يقرأ التطبيق إشعارات النظام الحقيقية."
     override val simulatedAlertsLabel = "تنبيهات محاكاة"
     override val importantLabel = "مهمة"

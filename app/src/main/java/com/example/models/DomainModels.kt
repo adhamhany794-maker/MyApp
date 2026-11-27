@@ -93,7 +93,18 @@ data class PriorityContact(
     val priorityLevel: ContactPriority,
     val allowedInterruptions: List<InterruptionType>,
     val isEnabled: Boolean,
-    val allowRepeatCallers: Boolean
+    val allowRepeatCallers: Boolean,
+    val phoneNumber: String = ""
+)
+
+data class EmergencyBypassOutcome(
+    val matchedContact: PriorityContact?,
+    val isEmergency: Boolean,
+    val allowed: Boolean,
+    val usedOsDndMechanism: Boolean,
+    val usedAppFallback: Boolean,
+    val bypassAppliedOnDevice: Boolean,
+    val explanation: String
 )
 
 data class ActivityEvent(

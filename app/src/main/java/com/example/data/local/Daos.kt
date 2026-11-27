@@ -62,6 +62,9 @@ interface ContactDao {
     @Query("SELECT * FROM priority_contacts ORDER BY name ASC")
     fun observeAll(): Flow<List<ContactEntity>>
 
+    @Query("SELECT * FROM priority_contacts ORDER BY name ASC")
+    suspend fun getAllOnce(): List<ContactEntity>
+
     @Query("SELECT COUNT(*) FROM priority_contacts")
     suspend fun count(): Int
 
