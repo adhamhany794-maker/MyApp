@@ -272,9 +272,8 @@ object DemoSeedData {
             initials = "MN",
             relationship = "Family",
             priorityLevel = ContactPriority.EMERGENCY,
-            allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE, InterruptionType.REPEAT_CALLER),
-            isEnabled = true,
-            allowRepeatCallers = true
+            allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
+            isEnabled = true
         ),
         PriorityContact(
             id = "contact_kareem",
@@ -282,9 +281,8 @@ object DemoSeedData {
             initials = "KM",
             relationship = "Medical / Advisor",
             priorityLevel = ContactPriority.EMERGENCY,
-            allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.REPEAT_CALLER),
-            isEnabled = true,
-            allowRepeatCallers = true
+            allowedInterruptions = listOf(InterruptionType.CALL),
+            isEnabled = true
         )
     )
 

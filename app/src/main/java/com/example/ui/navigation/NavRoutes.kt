@@ -10,7 +10,7 @@ object NavRoutes {
     const val SETTINGS = "settings"
 
     // Secondary Screens (all reachable within <= 2 taps)
-    const val CONTACTS = "contacts"
+    const val CONTACTS = HOME
     const val ACTIVITY = "activity"
     const val ADVANCED = "advanced"
     const val PROFILES = "profiles"

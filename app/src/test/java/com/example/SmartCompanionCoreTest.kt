@@ -116,14 +116,12 @@ class SmartCompanionCoreTest {
         val normalDecision = engine.simulateIncomingInterruption(
             contact = null,
             interruptionType = InterruptionType.CALL,
-            isRepeatCaller = false,
             activeProfile = studyProfile,
             callerName = "Omar Tariq"
         )
         val emergencyDecision = engine.simulateIncomingInterruption(
             contact = emergencyContact,
             interruptionType = InterruptionType.CALL,
-            isRepeatCaller = false,
             activeProfile = studyProfile
         )
 
@@ -251,8 +249,7 @@ class SmartCompanionCoreTest {
             relationship = "Family",
             priorityLevel = ContactPriority.EMERGENCY,
             allowedInterruptions = listOf(InterruptionType.CALL),
-            isEnabled = true,
-            allowRepeatCallers = false
+            isEnabled = true
         )
         val noChannelsEmergencyContact = restrictedEmergencyContact.copy(
             id = "contact_em_none",
@@ -273,11 +270,10 @@ class SmartCompanionCoreTest {
 
         for (profile in allProfiles) {
             for (emergency in allTestContacts) {
-                for (channel in listOf(InterruptionType.CALL, InterruptionType.MESSAGE, InterruptionType.REPEAT_CALLER)) {
+                for (channel in listOf(InterruptionType.CALL, InterruptionType.MESSAGE)) {
                     val decision = engine.simulateIncomingInterruption(
                         contact = emergency,
                         interruptionType = channel,
-                        isRepeatCaller = false,
                         activeProfile = profile
                     )
                     assertTrue(
@@ -337,7 +333,6 @@ class SmartCompanionCoreTest {
                     val decision = engine.simulateIncomingInterruption(
                         contact = emergency,
                         interruptionType = channel,
-                        isRepeatCaller = false,
                         activeProfile = resultingProfile
                     )
                     assertTrue(
@@ -380,10 +375,10 @@ class SmartCompanionCoreTest {
             )
             for (emergency in emergencyContacts) {
                 assertTrue(
-                    engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, resultingProfile).isAllowed
+                    engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, resultingProfile).isAllowed
                 )
                 assertTrue(
-                    engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, resultingProfile).isAllowed
+                    engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, resultingProfile).isAllowed
                 )
             }
         }
@@ -412,8 +407,8 @@ class SmartCompanionCoreTest {
             soundMode = focusOutput.targetSoundMode ?: SoundMode.SILENT
         )
         for (emergency in emergencyContacts) {
-            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, focusProfile).isAllowed)
-            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, focusProfile).isAllowed)
+            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, focusProfile).isAllowed)
+            assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, focusProfile).isAllowed)
         }
 
         // Global automation pause active (isAutomationPaused = true)
@@ -430,8 +425,8 @@ class SmartCompanionCoreTest {
         assertNull(pausedOutput.selectedRoutine)
         for (profile in profiles) {
             for (emergency in emergencyContacts) {
-                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, false, profile).isAllowed)
-                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, false, profile).isAllowed)
+                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.CALL, profile).isAllowed)
+                assertTrue(engine.simulateIncomingInterruption(emergency, InterruptionType.MESSAGE, profile).isAllowed)
             }
         }
     }

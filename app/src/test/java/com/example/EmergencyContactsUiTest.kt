@@ -9,9 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTextInput
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.automation.InMemoryRoutineStateBackupStore
@@ -27,8 +25,9 @@ import com.example.repositories.SmartCompanionRepository
 import com.example.simulation.PhoneControlGateway
 import com.example.simulation.PhoneControlManager
 import com.example.simulation.PhoneControlState
-import com.example.ui.screens.ContactsScreen
+import com.example.ui.screens.HomeDashboardScreen
 import com.example.ui.screens.NotificationAccessScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.SmartCompanionTheme
 import com.example.utils.stringsFor
 import com.example.viewmodels.SmartCompanionUiState
@@ -59,7 +58,7 @@ class EmergencyContactsUiTest {
     }
 
     @Test
-    fun `ContactsScreen shows Choose from phone contacts button, Arabic rationale dialog, manual fallback, and هيوصلك دايما badge`() {
+    fun `HomeDashboardScreen hosts Emergency Contacts, '+' triggers phone picker rationale without manual entry, and shows هيوصلك دايما`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -84,7 +83,6 @@ class EmergencyContactsUiTest {
             priorityLevel = ContactPriority.EMERGENCY,
             allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
             isEnabled = true,
-            allowRepeatCallers = true,
             phoneNumber = "01001234567"
         )
         val uiState = SmartCompanionUiState(
@@ -96,53 +94,87 @@ class EmergencyContactsUiTest {
         try {
             composeRule.setContent {
                 SmartCompanionTheme(language = AppLanguage.ARABIC) {
-                    ContactsScreen(
+                    HomeDashboardScreen(
                         state = uiState,
                         strings = arStrings,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        onNavigate = {}
                     )
                 }
             }
 
+            composeRule.onNodeWithTag("home_screen_list")
+                .performScrollToNode(hasTestTag("home_contacts_section"))
+            composeRule.onNodeWithTag("home_contacts_section").assertIsDisplayed()
             composeRule.onNodeWithTag("choose_phone_contact_btn").assertIsDisplayed()
-            composeRule.onNodeWithTag("add_contact_manual_btn").assertIsDisplayed()
+
+            // Manual entry controls and priority tiers must not exist
+            composeRule.onNodeWithTag("add_contact_manual_btn").assertDoesNotExist()
+            composeRule.onNodeWithTag("fallback_manual_contact_btn").assertDoesNotExist()
+            composeRule.onNodeWithTag("contact_name_input").assertDoesNotExist()
+            composeRule.onNodeWithTag("contact_phone_input").assertDoesNotExist()
             composeRule.onNodeWithText("أولوية عالية").assertDoesNotExist()
             composeRule.onNodeWithText("جهات اتصال عادية").assertDoesNotExist()
 
-            // Scroll to the emergency contact card and verify phone number and "هيوصلك دايما" badge
-            composeRule.onNodeWithTag("contacts_list")
-                .performScrollToNode(hasTestTag("contact_card_c_em_ui_1"))
+            // Emergency contact card shows phone number and "هيوصلك دايما" badge
+            composeRule.onNodeWithTag("contact_card_c_em_ui_1").assertIsDisplayed()
             composeRule.onNodeWithTag("emergency_always_badge_c_em_ui_1").assertIsDisplayed()
             composeRule.onNodeWithText("هيوصلك دايما").assertIsDisplayed()
             composeRule.onNodeWithText("01001234567").assertIsDisplayed()
 
-            // Tapping "Choose from phone contacts" without READ_CONTACTS shows the Arabic explanation dialog first
-            composeRule.onNodeWithTag("contacts_list")
-                .performScrollToNode(hasTestTag("choose_phone_contact_btn"))
+            // Tapping "+" without READ_CONTACTS shows the Arabic explanation dialog (with no manual entry button)
             composeRule.onNodeWithTag("choose_phone_contact_btn").performClick()
             composeRule.onNodeWithTag("read_contacts_rationale_dialog").assertIsDisplayed()
             composeRule.onNodeWithTag("confirm_read_contacts_permission_btn").assertIsDisplayed()
+            composeRule.onNodeWithTag("fallback_manual_contact_btn").assertDoesNotExist()
+            composeRule.onNodeWithTag("dismiss_read_contacts_rationale_btn").performClick()
+            composeRule.onNodeWithTag("read_contacts_rationale_dialog").assertDoesNotExist()
+        } finally {
+            store.clear()
+            runBlocking { prefs.resetDefaults(preserveOnboarding = false) }
+            db.close()
+        }
+    }
 
-            // Dismiss to manual entry keeps manual entry working without priority level picker
-            composeRule.onNodeWithTag("fallback_manual_contact_btn").performClick()
-            composeRule.onNodeWithTag("contact_name_input").performScrollTo().assertIsDisplayed()
-            composeRule.onNodeWithTag("contact_phone_input").performScrollTo().assertIsDisplayed()
-            composeRule.onNodeWithText("مستوى الأولوية").assertDoesNotExist()
-            composeRule.onNodeWithText("عادي").assertDoesNotExist()
+    @Test
+    fun `SettingsScreen omits duplicate contacts row and repeat-calls controls`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val prefs = PreferencesManager(context)
+        val repository = SmartCompanionRepository(db, prefs)
+        val store = androidx.lifecycle.ViewModelStore()
+        val viewModel = androidx.lifecycle.ViewModelProvider(
+            store,
+            SmartCompanionViewModel.Factory(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(InertGateway()),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler()
+            )
+        )[SmartCompanionViewModel::class.java]
+        val arStrings = stringsFor(AppLanguage.ARABIC)
+        val uiState = SmartCompanionUiState(isReady = true)
 
-            // Entering a manual emergency contact without WRITE_CONTACTS shows the Arabic star rationale dialog first
-            composeRule.onNodeWithTag("contact_name_input").performTextInput("بابا")
-            composeRule.onNodeWithTag("contact_phone_input").performTextInput("01012345678")
-            composeRule.onNodeWithText(arStrings.save).performClick()
+        try {
+            composeRule.setContent {
+                SmartCompanionTheme(language = AppLanguage.ARABIC) {
+                    SettingsScreen(
+                        state = uiState,
+                        strings = arStrings,
+                        viewModel = viewModel,
+                        onNavigate = {}
+                    )
+                }
+            }
 
-            composeRule.onNodeWithTag("write_contacts_rationale_dialog").assertIsDisplayed()
-            composeRule.onNodeWithText(arStrings.writeContactsPermDialogTitle).assertIsDisplayed()
-            composeRule.onNodeWithTag("confirm_write_contacts_permission_btn").assertIsDisplayed()
-            composeRule.onNodeWithTag("skip_write_contacts_btn").performClick()
-
-            composeRule.waitForIdle()
-            val savedContacts = runBlocking { repository.getAllContactsOnce() }
-            org.junit.Assert.assertTrue(savedContacts.any { it.name == "بابا" && it.phoneNumber == "01012345678" })
+            composeRule.onNodeWithTag("settings_contacts_row").assertDoesNotExist()
+            composeRule.onNodeWithTag("settings_repeat_calls_card").assertDoesNotExist()
+            composeRule.onNodeWithTag("repeat_calls_switch").assertDoesNotExist()
+            composeRule.onNodeWithTag("settings_list")
+                .performScrollToNode(hasTestTag("settings_notification_access_row"))
+            composeRule.onNodeWithTag("settings_notification_access_row").assertIsDisplayed()
         } finally {
             store.clear()
             runBlocking { prefs.resetDefaults(preserveOnboarding = false) }

@@ -51,13 +51,14 @@ class ExampleRobolectricTest {
         assertTrue(composeRule.onAllNodesWithTag("nav_contacts").fetchSemanticsNodes().isEmpty())
         assertTrue(composeRule.onAllNodesWithTag("nav_insights").fetchSemanticsNodes().isEmpty())
 
-        // Verify Home shows calm demo badge, no paused banner by default, and the 3 primary cards
+        // Verify Home shows calm demo badge, no paused banner by default, Assistant & Routines cards, and Emergency Contacts section
         composeRule.onNodeWithTag("home_demo_badge").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithTag("home_paused_banner").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("home_card_assistant").assertIsDisplayed()
         composeRule.onNodeWithTag("home_card_routines").assertIsDisplayed()
-        composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_card_contacts"))
-        composeRule.onNodeWithTag("home_card_contacts").assertIsDisplayed()
+        composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_contacts_section"))
+        composeRule.onNodeWithTag("home_contacts_section").assertIsDisplayed()
+        composeRule.onNodeWithTag("choose_phone_contact_btn").assertIsDisplayed()
 
         // Tap center '+' button to verify Rule Builder rows: When, Only if, Do this, Except
         composeRule.onNodeWithTag("nav_new_routine").performClick()
@@ -71,16 +72,12 @@ class ExampleRobolectricTest {
         composeRule.onNodeWithTag("builder_step_3").assertIsDisplayed()
         composeRule.onNodeWithTag("top_back_button").performClick()
 
-        // Navigate Home -> Emergency contacts
+        // Verify Emergency Contacts remain directly on Home after returning from Rule Builder
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("home_screen_list").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_card_contacts"))
-        composeRule.onNodeWithTag("home_card_contacts").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithTag("top_back_button").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("top_back_button").performClick()
+        composeRule.onNodeWithTag("home_screen_list").performScrollToNode(hasTestTag("home_contacts_section"))
+        composeRule.onNodeWithTag("home_contacts_section").assertIsDisplayed()
 
         // Navigate Settings -> Activity
         composeRule.waitUntil(timeoutMillis = 5_000) {

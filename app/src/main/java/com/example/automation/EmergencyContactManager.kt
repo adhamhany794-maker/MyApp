@@ -463,8 +463,7 @@ class EmergencyBypassController(
             isStarredInOs &&
             deviceState.currentRingerMode == SoundMode.SOUND &&
             (interruptionType == InterruptionType.CALL ||
-                interruptionType == InterruptionType.MESSAGE ||
-                interruptionType == InterruptionType.REPEAT_CALLER)
+                interruptionType == InterruptionType.MESSAGE)
 
         if (osDndCoversInterruption) {
             return EmergencyBypassOutcome(

@@ -59,16 +59,12 @@ class RoutineAlarmReceiver : BroadcastReceiver() {
         when (eventType) {
             AndroidRoutineAlarmScheduler.EVENT_START -> {
                 if (routine != null && routine.isEnabled && !appPrefs.isAutomationPaused) {
-                    val allowOsRepeatCallers = appPrefs.repeatCallsEnabled &&
-                        appPrefs.repeatCallCount == 2 &&
-                        appPrefs.repeatCallWindowMinutes == 15
                     val outcome = controller.applyRoutineStart(
                         routine = routine,
                         profiles = profiles,
                         isArabic = isArabic,
                         timestampMillis = nowMillis,
-                        hasEmergencyContacts = hasEmergencyContacts,
-                        allowOsRepeatCallers = allowOsRepeatCallers
+                        hasEmergencyContacts = hasEmergencyContacts
                     )
                     repository.addRoutineLog(outcome.logEntry)
                     repository.upsertRoutine(

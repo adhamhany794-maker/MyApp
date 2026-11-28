@@ -31,10 +31,10 @@ object FeatureExplanations {
         when (topic) {
             FeatureHelpTopic.HOME_DASHBOARD -> FeatureExplanation(
                 title = "الشاشة الرئيسية",
-                whatItIs = "نقطة بداية بسيطة تعرض فكرة التطبيق وثلاث بطاقات رئيسية: المساعد، روتيناتي، وجهات الطوارئ مع أحدث 3 أحداث.",
-                problemSolved = "تمنع التشتت وتوصلك لأهم الميزات بلمسة واحدة.",
-                howToUse = "اختر أي بطاقة لفتح المساعد الذكي أو إدارة الروتينات أو جهات الطوارئ.",
-                whatHappens = "تنتقل مباشرة إلى الأداة المطلوبة مع عرض أحدث 3 أحداث في الأسفل."
+                whatItIs = "نقطة بداية بسيطة تعرض المساعد وروتيناتي وقائمة جهات الطوارئ مباشرة مع أحدث 3 أحداث.",
+                problemSolved = "تمنع التشتت وتبقي جهات الطوارئ في مكان واحد سهل الوصول.",
+                howToUse = "افتح المساعد أو روتيناتي، أو اضغط زر + في قسم جهات الطوارئ لاختيار جهة اتصال من هاتفك.",
+                whatHappens = "تُحفظ جهة الطوارئ وتُميز بنجمة تلقائياً لتصلك دائماً حتى أثناء الصامت وعدم الإزعاج."
             )
             FeatureHelpTopic.SMART_PROFILES -> FeatureExplanation(
                 title = "الأوضاع الذكية",
@@ -75,8 +75,8 @@ object FeatureExplanations {
                 title = "جهات الطوارئ",
                 whatItIs = "قائمة المتصلين المختارين للطوارئ الذين لا يتأثرون بأي روتين أو وضع صامت إطلاقاً؛ وأي شخص آخر يُعامل كمتصل عادي تلقائياً.",
                 problemSolved = "تضمن وصول المكالمات العاجلة من العائلة أو الفريق حتى أثناء الدراسة أو النوم.",
-                howToUse = "أضف جهات الطوارئ من الهاتف أو يدوياً، أو فعّل ميزة المكالمات المتكررة من الإعدادات.",
-                whatHappens = "تتجاوز جهات الطوارئ أي روتين وأي وضع كتم دائماً."
+                howToUse = "اضغط زر + في قسم جهات الطوارئ على الشاشة الرئيسية لاختيار جهة اتصال من هاتفك.",
+                whatHappens = "تُحفظ وتُميز بنجمة لتجاوز أي روتين وأي وضع كتم دائماً."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(
                 title = "التحليلات والمؤشرات",
@@ -139,10 +139,10 @@ object FeatureExplanations {
         when (topic) {
             FeatureHelpTopic.HOME_DASHBOARD -> FeatureExplanation(
                 title = "Home",
-                whatItIs = "A clean starting view with three core shortcuts—Assistant, My routines, and Emergency contacts—plus your latest 3 events.",
-                problemSolved = "Keeps daily navigation effortless without overwhelming you with controls.",
-                howToUse = "Tap any of the three cards to create a rule, inspect routines, or manage emergency callers.",
-                whatHappens = "Opens the chosen feature immediately and keeps recent activity visible at a glance."
+                whatItIs = "A clean starting view with shortcuts to Assistant and My routines, your Emergency contacts right on Home, and your latest 3 events.",
+                problemSolved = "Keeps daily navigation effortless with emergency contacts in one place.",
+                howToUse = "Tap Assistant or My routines, or tap + in Emergency contacts to pick a contact from your phone.",
+                whatHappens = "Picked emergency contacts are saved and starred so they always get through."
             )
             FeatureHelpTopic.SMART_PROFILES -> FeatureExplanation(
                 title = "Smart Profiles",
@@ -183,8 +183,8 @@ object FeatureExplanations {
                 title = "Emergency Contacts",
                 whatItIs = "Chosen emergency callers who are never affected by any routine, even in Silent mode. Anyone else is treated as normal automatically.",
                 problemSolved = "Prevents missing urgent calls from family or teammates while routines silence distractions.",
-                howToUse = "Add emergency callers from your phonebook or manually, or configure Repeat Calls in Settings.",
-                whatHappens = "Emergency contacts always get through every routine and quiet profile."
+                howToUse = "Tap + in Emergency Contacts on Home to pick an emergency caller from your phone contacts.",
+                whatHappens = "Emergency contacts are starred and always get through every routine and quiet profile."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(
                 title = "Insights",

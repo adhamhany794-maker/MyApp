@@ -210,8 +210,7 @@ class RoutinePhoneController(
         profiles: List<SmartProfile>,
         isArabic: Boolean,
         timestampMillis: Long = System.currentTimeMillis(),
-        hasEmergencyContacts: Boolean = true,
-        allowOsRepeatCallers: Boolean = false
+        hasEmergencyContacts: Boolean = true
     ): RoutineControlOutcome {
         val targetSoundMode = resolveTargetSoundMode(routine, profiles)
         val isMutingRoutine = targetSoundMode == SoundMode.SILENT ||
@@ -289,8 +288,7 @@ class RoutinePhoneController(
         if (isMutingRoutine) {
             val dndRes = phoneControlManager.setDoNotDisturbEnabled(
                 enabled = true,
-                allowStarredContacts = true,
-                allowRepeatCallers = allowOsRepeatCallers
+                allowStarredContacts = true
             )
             dndOk = dndRes.success
             if (dndRes.permissionRequired) permRequiredDuringApply = true

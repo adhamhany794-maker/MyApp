@@ -533,7 +533,6 @@ class EmergencyContactsBehaviorTest {
                 priorityLevel = ContactPriority.EMERGENCY,
                 allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
                 isEnabled = true,
-                allowRepeatCallers = true,
                 phoneNumber = "01055566677"
             )
         )
@@ -581,7 +580,6 @@ class EmergencyContactsBehaviorTest {
             priorityLevel = ContactPriority.EMERGENCY,
             allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
             isEnabled = true,
-            allowRepeatCallers = true,
             phoneNumber = "01112223334"
         )
         val list = listOf(emergencyContact)
@@ -619,5 +617,101 @@ class EmergencyContactsBehaviorTest {
         val extractedFromPerson = EmergencyNotificationExtractor.extractSenderIdentity(structuredNotification)
         assertEquals("د. كريم", extractedFromPerson.senderName)
         assertEquals("+201112223334", extractedFromPerson.senderPhoneNumber)
+    }
+
+    @Test
+    fun `room migration 6 to 7 drops repeat_caller_rules and preserves emergency contacts without allowRepeatCallers`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbName = "migration_6_7_test.db"
+        context.deleteDatabase(dbName)
+        val helper = android.database.sqlite.SQLiteOpenHelper::class.java
+        checkNotNull(helper)
+
+        val openHelper = object : android.database.sqlite.SQLiteOpenHelper(context, dbName, null, 6) {
+            override fun onCreate(db: android.database.sqlite.SQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS repeat_caller_rules (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        phoneNumber TEXT NOT NULL,
+                        requiredCalls INTEGER NOT NULL,
+                        windowMinutes INTEGER NOT NULL,
+                        isEnabled INTEGER NOT NULL,
+                        systemContactId TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS priority_contacts (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        initials TEXT NOT NULL,
+                        relationship TEXT NOT NULL,
+                        priorityLevel TEXT NOT NULL,
+                        allowedInterruptionsJson TEXT NOT NULL,
+                        isEnabled INTEGER NOT NULL,
+                        allowRepeatCallers INTEGER NOT NULL,
+                        phoneNumber TEXT NOT NULL DEFAULT '',
+                        systemContactId TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+
+            override fun onUpgrade(db: android.database.sqlite.SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+
+        val writableDb = openHelper.writableDatabase
+        writableDb.execSQL(
+            "INSERT INTO repeat_caller_rules (id, name, phoneNumber, requiredCalls, windowMinutes, isEnabled, systemContactId) VALUES ('r1', 'Ali', '01099', 3, 10, 1, '12')"
+        )
+        writableDb.execSQL(
+            "INSERT INTO priority_contacts (id, name, initials, relationship, priorityLevel, allowedInterruptionsJson, isEnabled, allowRepeatCallers, phoneNumber, systemContactId) VALUES ('c1', 'Mom', 'M', 'Family', 'EMERGENCY', 'CALL,MESSAGE', 1, 1, '01001234567', '77')"
+        )
+
+        val frameworkSupportDb = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory()
+            .create(
+                androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+                    .name(dbName)
+                    .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(6) {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+                        override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                    })
+                    .build()
+            )
+            .writableDatabase
+        writableDb.close()
+
+        try {
+            AppDatabase.MIGRATION_6_7.migrate(frameworkSupportDb)
+
+            frameworkSupportDb.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='repeat_caller_rules'"
+            ).use { cursor ->
+                assertFalse("repeat_caller_rules table must be dropped", cursor.moveToFirst())
+            }
+
+            val columnNames = mutableListOf<String>()
+            frameworkSupportDb.query("PRAGMA table_info(priority_contacts)").use { cursor ->
+                val nameCol = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    columnNames += cursor.getString(nameCol)
+                }
+            }
+            assertFalse("allowRepeatCallers column must be removed", columnNames.contains("allowRepeatCallers"))
+
+            frameworkSupportDb.query("SELECT id, name, phoneNumber, systemContactId FROM priority_contacts").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("c1", cursor.getString(0))
+                assertEquals("Mom", cursor.getString(1))
+                assertEquals("01001234567", cursor.getString(2))
+                assertEquals("77", cursor.getString(3))
+            }
+        } finally {
+            frameworkSupportDb.close()
+            context.deleteDatabase(dbName)
+        }
     }
 }

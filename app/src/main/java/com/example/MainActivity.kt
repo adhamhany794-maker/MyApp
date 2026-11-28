@@ -10,7 +10,6 @@ import com.example.automation.AndroidRoutineAlarmScheduler
 import com.example.automation.PhoneContactPickerResolver
 import com.example.automation.RoutineNotificationHelper
 import com.example.automation.SharedPreferencesEmergencyBypassBackupStore
-import com.example.automation.SharedPreferencesRepeatCallHistoryStore
 import com.example.automation.SharedPreferencesRoutineStateBackupStore
 import com.example.data.PreferencesManager
 import com.example.data.local.AppDatabase
@@ -61,8 +60,7 @@ class MainActivity : ComponentActivity() {
                         contact = contact,
                         starred = starred
                     )
-                },
-                repeatCallHistoryStore = SharedPreferencesRepeatCallHistoryStore(applicationContext)
+                }
             )
         )[SmartCompanionViewModel::class.java]
         appViewModel = viewModel

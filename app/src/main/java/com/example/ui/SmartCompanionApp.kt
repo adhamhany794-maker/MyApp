@@ -85,7 +85,6 @@ import com.example.ui.navigation.NavRoutes
 import com.example.ui.screens.ActivityScreen
 import com.example.ui.screens.AdvancedScreen
 import com.example.ui.screens.AssistantScreen
-import com.example.ui.screens.ContactsScreen
 import com.example.ui.screens.FocusSessionsScreen
 import com.example.ui.screens.HomeDashboardScreen
 import com.example.ui.screens.NotificationAccessScreen
@@ -205,7 +204,6 @@ fun SmartCompanionApp(
                 currentRoute == NavRoutes.ROUTINES -> strings.navRoutines
                 currentRoute == NavRoutes.ASSISTANT -> strings.navAssistant
                 currentRoute == NavRoutes.SETTINGS -> strings.navSettings
-                currentRoute == NavRoutes.CONTACTS -> strings.navContacts
                 currentRoute == NavRoutes.ACTIVITY -> strings.screenActivity
                 currentRoute == NavRoutes.ADVANCED -> strings.screenAdvanced
                 currentRoute == NavRoutes.PROFILES -> strings.screenProfiles
@@ -424,14 +422,6 @@ fun SmartCompanionApp(
                                 strings = strings,
                                 viewModel = viewModel,
                                 onNavigate = { route -> navigateTo(route) }
-                            )
-                        }
-                        composable(NavRoutes.CONTACTS) {
-                            ContactsScreen(
-                                state = state,
-                                strings = strings,
-                                viewModel = viewModel,
-                                onOpenNotificationAccess = { navigateTo(NavRoutes.NOTIFICATION_ACCESS) }
                             )
                         }
                         composable(NavRoutes.NOTIFICATION_ACCESS) {

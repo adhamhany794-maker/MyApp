@@ -1,11 +1,5 @@
 package com.example.ui.screens
 
-import android.Manifest
-import android.app.role.RoleManager
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,55 +15,38 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Call
-import androidx.compose.material.icons.rounded.Contacts
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DoNotDisturbOn
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayCircleOutline
-import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,25 +55,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.automation.CallLogRepeatReader
-import com.example.automation.PhoneContactPickerResolver
-import com.example.automation.RepeatCallPolicyResolver
 import com.example.models.AppLanguage
 import com.example.models.ConflictResolutionPolicy
 import com.example.models.ContactPriority
 import com.example.models.InterruptionType
-import com.example.models.RepeatCallerRule
 import com.example.models.SoundMode
 import com.example.models.ThemeMode
 import com.example.simulation.AutomationSimulationEngine
@@ -108,7 +77,6 @@ import com.example.ui.components.ScreenIntroHeader
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.SimulatedDemoBadge
 import com.example.ui.navigation.NavRoutes
-import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.StatusAmber
 import com.example.ui.theme.StatusCrimson
 import com.example.ui.theme.StatusEmerald
@@ -118,7 +86,6 @@ import com.example.utils.FeatureExplanations
 import com.example.utils.FeatureHelpTopic
 import com.example.viewmodels.SmartCompanionUiState
 import com.example.viewmodels.SmartCompanionViewModel
-import java.util.UUID
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -131,13 +98,6 @@ fun SettingsScreen(
     var showResetConfirm by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var showAdvancedSection by remember { mutableStateOf(false) }
-    var showCallLogRationaleDialog by remember { mutableStateOf(false) }
-    var showRepeatContactsRationaleDialog by remember { mutableStateOf(false) }
-    var editingRepeatRule by remember { mutableStateOf<RepeatCallerRule?>(null) }
-    var isNewRepeatRule by remember { mutableStateOf(false) }
-    var deletingRepeatRule by remember { mutableStateOf<RepeatCallerRule?>(null) }
-    var repeatEditorError by remember { mutableStateOf<String?>(null) }
-    var callLogPermRefreshTick by remember { mutableIntStateOf(0) }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -145,7 +105,6 @@ fun SettingsScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshPhoneControlState()
-                callLogPermRefreshTick++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -154,71 +113,8 @@ fun SettingsScreen(
         }
     }
 
-    val hasCallCountingPerms = remember(context, callLogPermRefreshTick) {
-        CallLogRepeatReader.hasReadCallLogPermission(context) &&
-            CallLogRepeatReader.hasReadPhoneStatePermission(context)
-    }
-
-    val callLogPermissionsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ ->
-        callLogPermRefreshTick++
-    }
-
-    val callScreeningRoleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        callLogPermRefreshTick++
-    }
-
-    val repeatPickContactLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact()
-    ) { uri ->
-        if (uri != null) {
-            val picked = PhoneContactPickerResolver.resolveFromUri(context.contentResolver, uri)
-            if (picked != null) {
-                isNewRepeatRule = true
-                repeatEditorError = if (picked.phoneNumber.isBlank()) {
-                    if (strings.isArabic) "جهة الاتصال المختارة لا تحتوي على رقم هاتف — أدخل الرقم يدوياً."
-                    else "Selected contact has no phone number — please enter it manually."
-                } else null
-                editingRepeatRule = RepeatCallerRule(
-                    id = "repeat_${UUID.randomUUID().toString().take(8)}",
-                    name = picked.name,
-                    phoneNumber = picked.phoneNumber,
-                    requiredCalls = state.preferences.repeatCallCount.coerceIn(2, 20),
-                    windowMinutes = state.preferences.repeatCallWindowMinutes.coerceIn(1, 240),
-                    isEnabled = true,
-                    systemContactId = picked.systemContactId
-                )
-            }
-        }
-    }
-
-    val repeatReadContactsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            repeatPickContactLauncher.launch(null)
-        } else {
-            isNewRepeatRule = true
-            repeatEditorError = null
-            editingRepeatRule = RepeatCallerRule(
-                id = "repeat_${UUID.randomUUID().toString().take(8)}",
-                name = "",
-                phoneNumber = "",
-                requiredCalls = state.preferences.repeatCallCount.coerceIn(2, 20),
-                windowMinutes = state.preferences.repeatCallWindowMinutes.coerceIn(1, 240),
-                isEnabled = true
-            )
-        }
-    }
-
     val conflicts = remember(state.routines) {
         AutomationSimulationEngine().findPotentialConflicts(state.routines)
-    }
-    val emergencyCount = state.contacts.count {
-        it.isEnabled && it.priorityLevel == ContactPriority.EMERGENCY
     }
 
     LazyColumn(
@@ -591,21 +487,6 @@ fun SettingsScreen(
                     containerColor = if (state.preferences.isAutomationPaused) StatusAmber.copy(alpha = 0.10f)
                     else MaterialTheme.colorScheme.surface
                 ) {
-                    // Emergency Contacts
-                    SettingsNavRow(
-                        title = strings.navContacts,
-                        subtitle = "$emergencyCount ${strings.homeCardContactsSubSuffix}",
-                        icon = Icons.Rounded.Shield,
-                        accentColor = StatusEmerald,
-                        onClick = { onNavigate(NavRoutes.CONTACTS) },
-                        modifier = Modifier.testTag("settings_contacts_row")
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-
                     // Backup Notification Access
                     SettingsNavRow(
                         title = strings.screenNotificationAccess,
@@ -619,373 +500,6 @@ fun SettingsScreen(
                         onClick = { onNavigate(NavRoutes.NOTIFICATION_ACCESS) },
                         modifier = Modifier.testTag("settings_notification_access_row")
                     )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-
-                    // Repeat Calls (Global + Per-Person Rules)
-                    val repeatEnabled = state.preferences.repeatCallsEnabled
-                    val repeatN = state.preferences.repeatCallCount.coerceIn(2, 20)
-                    val repeatM = state.preferences.repeatCallWindowMinutes.coerceIn(1, 240)
-                    val usesOsRepeatPolicy = RepeatCallPolicyResolver.shouldUseOsRepeatCallersPolicy(
-                        globalEnabled = repeatEnabled,
-                        globalRequiredCalls = repeatN,
-                        globalWindowMinutes = repeatM
-                    )
-                    val needsInAppCallCounting = (repeatEnabled && !usesOsRepeatPolicy) ||
-                        state.repeatCallerRules.any { it.isEnabled }
-
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.testTag("settings_repeat_calls_card")
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Repeat,
-                                    contentDescription = null,
-                                    tint = StatusIndigo,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Column {
-                                    Text(strings.repeatCallsTitle, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        text = if (repeatEnabled) {
-                                            if (strings.isArabic) "$repeatN مكالمات خلال $repeatM دقيقة"
-                                            else "$repeatN calls within $repeatM min"
-                                        } else {
-                                            strings.repeatCallsOffStatus
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Switch(
-                                checked = repeatEnabled,
-                                onCheckedChange = { checked ->
-                                    viewModel.setRepeatCallsConfig(
-                                        enabled = checked,
-                                        requiredCalls = repeatN,
-                                        windowMinutes = repeatM
-                                    )
-                                    if (checked && (repeatN != 2 || repeatM != 15) && !hasCallCountingPerms) {
-                                        showCallLogRationaleDialog = true
-                                    }
-                                },
-                                modifier = Modifier.testTag("repeat_calls_switch")
-                            )
-                        }
-
-                        Text(
-                            text = strings.repeatCallsExplain,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (repeatEnabled) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = strings.repeatCallsCountLabel,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    val next = (repeatN - 1).coerceAtLeast(2)
-                                                    viewModel.setRepeatCallsConfig(true, next, repeatM)
-                                                },
-                                                enabled = repeatN > 2,
-                                                modifier = Modifier.testTag("repeat_calls_count_dec")
-                                            ) {
-                                                Icon(Icons.Rounded.Remove, contentDescription = strings.repeatCallsCountLabel)
-                                            }
-                                            Text(
-                                                text = repeatN.toString(),
-                                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFamily),
-                                                modifier = Modifier
-                                                    .padding(horizontal = 8.dp)
-                                                    .testTag("repeat_calls_count_value")
-                                            )
-                                            IconButton(
-                                                onClick = {
-                                                    val next = (repeatN + 1).coerceAtMost(20)
-                                                    viewModel.setRepeatCallsConfig(true, next, repeatM)
-                                                    if ((next != 2 || repeatM != 15) && !hasCallCountingPerms) {
-                                                        showCallLogRationaleDialog = true
-                                                    }
-                                                },
-                                                enabled = repeatN < 20,
-                                                modifier = Modifier.testTag("repeat_calls_count_inc")
-                                            ) {
-                                                Icon(Icons.Rounded.Add, contentDescription = strings.repeatCallsCountLabel)
-                                            }
-                                        }
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = strings.repeatCallsWindowLabel,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    val next = when {
-                                                        repeatM <= 5 -> (repeatM - 1).coerceAtLeast(1)
-                                                        else -> (repeatM - 5).coerceAtLeast(1)
-                                                    }
-                                                    viewModel.setRepeatCallsConfig(true, repeatN, next)
-                                                    if ((repeatN != 2 || next != 15) && !hasCallCountingPerms) {
-                                                        showCallLogRationaleDialog = true
-                                                    }
-                                                },
-                                                enabled = repeatM > 1,
-                                                modifier = Modifier.testTag("repeat_calls_window_dec")
-                                            ) {
-                                                Icon(Icons.Rounded.Remove, contentDescription = strings.repeatCallsWindowLabel)
-                                            }
-                                            Text(
-                                                text = "$repeatM ${strings.minutesUnitLabel}",
-                                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFamily),
-                                                modifier = Modifier
-                                                    .padding(horizontal = 8.dp)
-                                                    .testTag("repeat_calls_window_value")
-                                            )
-                                            IconButton(
-                                                onClick = {
-                                                    val next = when {
-                                                        repeatM < 5 -> (repeatM + 1).coerceAtMost(240)
-                                                        else -> (repeatM + 5).coerceAtMost(240)
-                                                    }
-                                                    viewModel.setRepeatCallsConfig(true, repeatN, next)
-                                                    if ((repeatN != 2 || next != 15) && !hasCallCountingPerms) {
-                                                        showCallLogRationaleDialog = true
-                                                    }
-                                                },
-                                                enabled = repeatM < 240,
-                                                modifier = Modifier.testTag("repeat_calls_window_inc")
-                                            ) {
-                                                Icon(Icons.Rounded.Add, contentDescription = strings.repeatCallsWindowLabel)
-                                            }
-                                        }
-                                    }
-
-                                    Text(
-                                        text = if (usesOsRepeatPolicy) strings.repeatCallsOsPolicyNote else strings.repeatCallsAppCountingNote,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = StatusIndigo,
-                                        modifier = Modifier.testTag("repeat_calls_mode_note")
-                                    )
-                                }
-                            }
-                        }
-
-                        if (needsInAppCallCounting) {
-                            if (hasCallCountingPerms) {
-                                Surface(
-                                    color = StatusEmerald.copy(alpha = 0.14f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.testTag("call_log_perm_granted_badge")
-                                ) {
-                                    Text(
-                                        text = strings.callLogPermGrantedBadge,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = StatusEmerald,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
-                            } else {
-                                OutlinedButton(
-                                    onClick = { showCallLogRationaleDialog = true },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("grant_call_log_perm_btn")
-                                ) {
-                                    Text(strings.grantCallLogPermBtn)
-                                }
-                            }
-
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                val roleManager = context.getSystemService(RoleManager::class.java)
-                                val hasCallScreeningRole = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-                                if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) && !hasCallScreeningRole) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            runCatching {
-                                                val roleIntent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
-                                                callScreeningRoleLauncher.launch(roleIntent)
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("grant_call_screening_btn")
-                                    ) {
-                                        Text(strings.enableCallScreeningBtn)
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = strings.perPersonRepeatTitle,
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = strings.perPersonRepeatExplain,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val readGranted = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.READ_CONTACTS
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (readGranted) {
-                                        repeatPickContactLauncher.launch(null)
-                                    } else {
-                                        showRepeatContactsRationaleDialog = true
-                                    }
-                                },
-                                modifier = Modifier.testTag("add_repeat_person_pick_btn")
-                            ) {
-                                Icon(Icons.Rounded.Contacts, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.chooseFromPhoneContactsBtn)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    isNewRepeatRule = true
-                                    repeatEditorError = null
-                                    editingRepeatRule = RepeatCallerRule(
-                                        id = "repeat_${UUID.randomUUID().toString().take(8)}",
-                                        name = "",
-                                        phoneNumber = "",
-                                        requiredCalls = 2,
-                                        windowMinutes = 15,
-                                        isEnabled = true
-                                    )
-                                },
-                                modifier = Modifier.testTag("add_repeat_person_manual_btn")
-                            ) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.addRepeatPersonManualBtn)
-                            }
-                        }
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.testTag("per_person_repeat_list")
-                        ) {
-                            if (state.repeatCallerRules.isEmpty()) {
-                                Text(
-                                    text = strings.noPerPersonRepeatMsg,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
-                                state.repeatCallerRules.forEach { rule ->
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("repeat_rule_item_${rule.id}")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = rule.name,
-                                                    style = MaterialTheme.typography.titleSmall
-                                                )
-                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                                    Text(
-                                                        text = rule.phoneNumber,
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                                Text(
-                                                    text = if (strings.isArabic) {
-                                                        "${rule.requiredCalls} مكالمات خلال ${rule.windowMinutes} دقيقة"
-                                                    } else {
-                                                        "${rule.requiredCalls} calls within ${rule.windowMinutes} min"
-                                                    },
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    isNewRepeatRule = false
-                                                    repeatEditorError = null
-                                                    editingRepeatRule = rule
-                                                },
-                                                modifier = Modifier.testTag("edit_repeat_rule_${rule.id}")
-                                            ) {
-                                                Icon(Icons.Rounded.Edit, contentDescription = strings.edit)
-                                            }
-                                            IconButton(
-                                                onClick = { deletingRepeatRule = rule },
-                                                modifier = Modifier.testTag("delete_repeat_rule_${rule.id}")
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.DeleteOutline,
-                                                    contentDescription = strings.delete,
-                                                    tint = MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
 
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 12.dp),
@@ -1206,7 +720,7 @@ fun SettingsScreen(
                     OutlinedButton(
                         onClick = {
                             emergency?.let {
-                                viewModel.simulateIncomingInterruption(it, InterruptionType.CALL, isRepeatCaller = true)
+                                viewModel.simulateIncomingInterruption(it, InterruptionType.CALL)
                             }
                         },
                         enabled = emergency != null,
@@ -1509,234 +1023,6 @@ fun SettingsScreen(
             onDismiss = { showHelp = false }
         )
     }
-
-    if (showCallLogRationaleDialog) {
-        AlertDialog(
-            onDismissRequest = { showCallLogRationaleDialog = false },
-            modifier = Modifier.testTag("call_log_rationale_dialog"),
-            title = { Text(strings.callLogPermDialogTitle) },
-            text = {
-                Text(
-                    text = strings.callLogPermDialogBody,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showCallLogRationaleDialog = false
-                        callLogPermissionsLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.READ_CALL_LOG,
-                                Manifest.permission.READ_PHONE_STATE
-                            )
-                        )
-                    },
-                    modifier = Modifier.testTag("confirm_call_log_perm_btn")
-                ) {
-                    Text(strings.callLogPermAllowBtn)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCallLogRationaleDialog = false }) {
-                    Text(strings.cancel)
-                }
-            }
-        )
-    }
-
-    if (showRepeatContactsRationaleDialog) {
-        AlertDialog(
-            onDismissRequest = { showRepeatContactsRationaleDialog = false },
-            modifier = Modifier.testTag("repeat_read_contacts_rationale_dialog"),
-            title = { Text(strings.contactsPermDialogTitle) },
-            text = {
-                Text(
-                    text = strings.contactsPermDialogBody,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showRepeatContactsRationaleDialog = false
-                        repeatReadContactsLauncher.launch(Manifest.permission.READ_CONTACTS)
-                    },
-                    modifier = Modifier.testTag("confirm_repeat_read_contacts_btn")
-                ) {
-                    Text(strings.contactsPermAllowBtn)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showRepeatContactsRationaleDialog = false
-                        isNewRepeatRule = true
-                        repeatEditorError = null
-                        editingRepeatRule = RepeatCallerRule(
-                            id = "repeat_${UUID.randomUUID().toString().take(8)}",
-                            name = "",
-                            phoneNumber = "",
-                            requiredCalls = 2,
-                            windowMinutes = 15,
-                            isEnabled = true
-                        )
-                    }
-                ) {
-                    Text(strings.addRepeatPersonManualBtn)
-                }
-            }
-        )
-    }
-
-    editingRepeatRule?.let { draftRule ->
-        RepeatCallerRuleEditorDialog(
-            initial = draftRule,
-            isNew = isNewRepeatRule,
-            initialError = repeatEditorError,
-            strings = strings,
-            onDismiss = {
-                editingRepeatRule = null
-                repeatEditorError = null
-            },
-            onSave = { savedRule ->
-                editingRepeatRule = null
-                repeatEditorError = null
-                viewModel.saveRepeatCallerRule(savedRule)
-                if (!hasCallCountingPerms) {
-                    showCallLogRationaleDialog = true
-                }
-            }
-        )
-    }
-
-    deletingRepeatRule?.let { targetRule ->
-        ConfirmActionDialog(
-            title = strings.deleteRepeatPersonTitle,
-            message = "${targetRule.name} (${targetRule.phoneNumber})",
-            confirmText = strings.removeBtn,
-            cancelText = strings.cancel,
-            onConfirm = {
-                viewModel.deleteRepeatCallerRule(targetRule)
-                deletingRepeatRule = null
-            },
-            onDismiss = { deletingRepeatRule = null }
-        )
-    }
-}
-
-@Composable
-private fun RepeatCallerRuleEditorDialog(
-    initial: RepeatCallerRule,
-    isNew: Boolean,
-    initialError: String? = null,
-    strings: AppStrings,
-    onDismiss: () -> Unit,
-    onSave: (RepeatCallerRule) -> Unit
-) {
-    var name by remember { mutableStateOf(initial.name) }
-    var phone by remember { mutableStateOf(initial.phoneNumber) }
-    var countText by remember { mutableStateOf(initial.requiredCalls.coerceIn(2, 20).toString()) }
-    var windowText by remember { mutableStateOf(initial.windowMinutes.coerceIn(1, 240).toString()) }
-    var errorMsg by remember { mutableStateOf(initialError) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier
-            .widthIn(max = 420.dp)
-            .testTag("repeat_person_editor_dialog"),
-        title = {
-            Text(if (isNew) strings.addRepeatPersonTitle else strings.editRepeatPersonTitle)
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it; errorMsg = null },
-                    label = { Text(strings.contactNameLabel) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("repeat_person_name_input")
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it; errorMsg = null },
-                    label = { Text(strings.contactPhoneLabel) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("repeat_person_phone_input")
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = countText,
-                        onValueChange = { countText = it.filter { c -> c.isDigit() }; errorMsg = null },
-                        label = { Text(strings.repeatCallsCountLabel) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("repeat_person_count_input")
-                    )
-                    OutlinedTextField(
-                        value = windowText,
-                        onValueChange = { windowText = it.filter { c -> c.isDigit() }; errorMsg = null },
-                        label = { Text(strings.repeatCallsWindowLabel) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("repeat_person_window_input")
-                    )
-                }
-                if (errorMsg != null) {
-                    Text(
-                        text = errorMsg!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val trimmedPhone = phone.trim()
-                    if (trimmedPhone.isBlank()) {
-                        errorMsg = if (strings.isArabic) "يرجى إدخال رقم الهاتف" else "Please enter a phone number"
-                        return@Button
-                    }
-                    val reqCalls = (countText.toIntOrNull() ?: 2).coerceIn(2, 20)
-                    val winMins = (windowText.toIntOrNull() ?: 15).coerceIn(1, 240)
-                    onSave(
-                        initial.copy(
-                            name = name.trim().ifBlank { trimmedPhone },
-                            phoneNumber = trimmedPhone,
-                            requiredCalls = reqCalls,
-                            windowMinutes = winMins,
-                            isEnabled = true
-                        )
-                    )
-                },
-                modifier = Modifier.testTag("repeat_person_save_btn")
-            ) {
-                Text(strings.save)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(strings.cancel)
-            }
-        }
-    )
 }
 
 @Composable

@@ -93,18 +93,7 @@ data class PriorityContact(
     val priorityLevel: ContactPriority,
     val allowedInterruptions: List<InterruptionType>,
     val isEnabled: Boolean,
-    val allowRepeatCallers: Boolean,
     val phoneNumber: String = "",
-    val systemContactId: String = ""
-)
-
-data class RepeatCallerRule(
-    val id: String,
-    val name: String,
-    val phoneNumber: String,
-    val requiredCalls: Int = 2,
-    val windowMinutes: Int = 15,
-    val isEnabled: Boolean = true,
     val systemContactId: String = ""
 )
 
@@ -160,8 +149,7 @@ data class SimulationContextState(
     val location: SimulatedLocation = SimulatedLocation.HOME,
     val customLocationName: String = "Downtown Study Cafe",
     val activity: SimulatedActivity = SimulatedActivity.PERSONAL_TIME,
-    val customActivityName: String = "Reading",
-    val repeatCallerDetected: Boolean = false
+    val customActivityName: String = "Reading"
 )
 
 data class PhoneSnapshot(

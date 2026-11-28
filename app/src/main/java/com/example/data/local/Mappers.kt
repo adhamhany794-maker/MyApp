@@ -13,7 +13,6 @@ import com.example.models.NotificationCategory
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
 import com.example.models.ProfileIconKey
-import com.example.models.RepeatCallerRule
 import com.example.models.RoutineLogEntry
 import com.example.models.RoutineLogEventType
 import com.example.models.RuleAction
@@ -181,7 +180,6 @@ object EntityMappers {
                 .getOrDefault(ContactPriority.EMERGENCY),
             allowedInterruptions = interruptions,
             isEnabled = isEnabled,
-            allowRepeatCallers = allowRepeatCallers,
             phoneNumber = phoneNumber,
             systemContactId = systemContactId
         )
@@ -199,7 +197,6 @@ object EntityMappers {
             priorityLevel = priorityLevel.name,
             allowedInterruptionsJson = arr.toString(),
             isEnabled = isEnabled,
-            allowRepeatCallers = allowRepeatCallers,
             phoneNumber = phoneNumber,
             systemContactId = systemContactId
         )
@@ -315,30 +312,6 @@ object EntityMappers {
             dndEnabled = dndEnabled,
             interruptionFilter = interruptionFilter,
             note = note
-        )
-    }
-
-    fun RepeatCallerEntity.toDomain(): RepeatCallerRule {
-        return RepeatCallerRule(
-            id = id,
-            name = name,
-            phoneNumber = phoneNumber,
-            requiredCalls = requiredCalls.coerceIn(2, 20),
-            windowMinutes = windowMinutes.coerceIn(1, 240),
-            isEnabled = isEnabled,
-            systemContactId = systemContactId
-        )
-    }
-
-    fun RepeatCallerRule.toEntity(): RepeatCallerEntity {
-        return RepeatCallerEntity(
-            id = id,
-            name = name,
-            phoneNumber = phoneNumber,
-            requiredCalls = requiredCalls.coerceIn(2, 20),
-            windowMinutes = windowMinutes.coerceIn(1, 240),
-            isEnabled = isEnabled,
-            systemContactId = systemContactId
         )
     }
 

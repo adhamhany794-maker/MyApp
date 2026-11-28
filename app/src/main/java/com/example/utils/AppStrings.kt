@@ -287,34 +287,26 @@ abstract class AppStrings {
     // Contacts
     abstract val contactsSubtitle: String
     abstract val interruptionTesterTitle: String
-    abstract val repeatCallerLabel: String
     abstract val testCallBtn: String
     abstract val testMsgBtn: String
     abstract val allowedUpper: String
     abstract val blockedUpper: String
-    abstract val addContactTitle: String
-    abstract val editContactTitle: String
-    abstract val contactNameLabel: String
-    abstract val contactPhoneLabel: String
-    abstract val contactRelLabel: String
-    abstract val contactTypesLabel: String
-    abstract val allowRepeatCallers: String
-    abstract val contactNameError: String
     abstract val removeContactTitle: String
     abstract val removeContactMsg: String
     abstract val removeBtn: String
     abstract val chooseFromPhoneContactsBtn: String
-    abstract val addManuallyBtn: String
     abstract val contactsPermDialogTitle: String
     abstract val contactsPermDialogBody: String
     abstract val contactsPermAllowBtn: String
     abstract val contactsPermDeniedTitle: String
     abstract val contactsPermDeniedBody: String
+    abstract val openAppSettingsBtn: String
+    abstract val emptyEmergencyContactsMsg: String
     abstract val emergencyAlwaysReachesStatus: String
     abstract val writeContactsPermDialogTitle: String
     abstract val writeContactsPermDialogBody: String
     abstract val writeContactsPermAllowBtn: String
-    abstract val saveManualWithoutStarBtn: String
+    abstract val saveWithoutStarBtn: String
     abstract val screenNotificationAccess: String
     abstract val notifAccessSubtitle: String
     abstract val notifAccessWarningOffTitle: String
@@ -326,29 +318,6 @@ abstract class AppStrings {
     abstract val openNotifListenerSettingsBtn: String
     abstract val notifAccessManageBtn: String
     abstract val normalCallerAutomaticLabel: String
-
-    // Repeat Calls Settings
-    abstract val repeatCallsTitle: String
-    abstract val repeatCallsExplain: String
-    abstract val repeatCallsSwitchLabel: String
-    abstract val repeatCallsOffStatus: String
-    abstract val repeatCallsCountLabel: String
-    abstract val repeatCallsWindowLabel: String
-    abstract val repeatCallsOsPolicyNote: String
-    abstract val repeatCallsAppCountingNote: String
-    abstract val callLogPermDialogTitle: String
-    abstract val callLogPermDialogBody: String
-    abstract val callLogPermAllowBtn: String
-    abstract val grantCallLogPermBtn: String
-    abstract val callLogPermGrantedBadge: String
-    abstract val enableCallScreeningBtn: String
-    abstract val perPersonRepeatTitle: String
-    abstract val perPersonRepeatExplain: String
-    abstract val addRepeatPersonManualBtn: String
-    abstract val editRepeatPersonTitle: String
-    abstract val addRepeatPersonTitle: String
-    abstract val noPerPersonRepeatMsg: String
-    abstract val deleteRepeatPersonTitle: String
 
     // Notification Intelligence
     abstract val notifSubtitle: String
@@ -591,7 +560,6 @@ abstract class AppStrings {
         when (t) {
             InterruptionType.CALL -> "المكالمات"
             InterruptionType.MESSAGE -> "الرسائل"
-            InterruptionType.REPEAT_CALLER -> "المتصل المتكرر"
         }
     } else t.displayName
 
@@ -1043,34 +1011,26 @@ private object EnglishAppStrings : AppStrings() {
     override val simTraceFinal = "Final Simulated Result"
     override val contactsSubtitle = "Emergency callers and messages bypass any active routine, Silent, DND, or Sleep mode."
     override val interruptionTesterTitle = "Incoming Interruption Tester"
-    override val repeatCallerLabel = "Simulate repeat caller (2nd call in 3m)"
     override val testCallBtn = "Test Call"
     override val testMsgBtn = "Test Message"
     override val allowedUpper = "ALLOWED"
     override val blockedUpper = "BLOCKED"
-    override val addContactTitle = "Add Emergency Contact"
-    override val editContactTitle = "Edit Emergency Contact"
-    override val contactNameLabel = "Name *"
-    override val contactPhoneLabel = "Phone Number"
-    override val contactRelLabel = "Relationship Label"
-    override val contactTypesLabel = "Allowed Interruption Types"
-    override val allowRepeatCallers = "Allow repeat callers"
-    override val contactNameError = "Please enter a contact name."
     override val removeContactTitle = "Remove Emergency Contact?"
     override val removeContactMsg = "Remove this contact from Emergency Contacts? They will be treated as normal automatically."
     override val removeBtn = "Remove"
     override val chooseFromPhoneContactsBtn = "Choose from phone contacts"
-    override val addManuallyBtn = "Add manually"
     override val contactsPermDialogTitle = "Contacts Permission (إذن جهات الاتصال)"
-    override val contactsPermDialogBody = "Allow access to phone contacts to pick an emergency contact and save their name and number automatically.\n\nيحتاج التطبيق إلى إذن قراءة جهات الاتصال لتتمكن من اختيار جهة طوارئ وحفظ اسمها ورقمها تلقائياً حتى تصلك مكالماتها وإشعاراتها دائماً. يمكنك الإضافة يدوياً بدون الإذن."
+    override val contactsPermDialogBody = "Allow access to phone contacts to pick an emergency contact and save their name and number.\n\nيحتاج التطبيق إلى إذن قراءة جهات الاتصال لاختيار جهة طوارئ من هاتفك وحفظ اسمها ورقمها حتى تصلك مكالماتها وإشعاراتها دائماً."
     override val contactsPermAllowBtn = "Allow / السماح"
-    override val contactsPermDeniedTitle = "Permission Denied"
-    override val contactsPermDeniedBody = "Contacts permission was denied. You can still add emergency contacts manually.\n\nتم رفض إذن جهات الاتصال، ولا يزال بإمكانك إضافة جهات الطوارئ يدوياً."
+    override val contactsPermDeniedTitle = "Contacts Permission Needed (إذن جهات الاتصال مطلوب)"
+    override val contactsPermDeniedBody = "Contacts permission was denied. Enable Contacts access in App Settings to pick an emergency contact from your phone.\n\nتم رفض إذن جهات الاتصال. فعّل إذن جهات الاتصال من إعدادات التطبيق لتتمكن من اختيار جهة طوارئ من الهاتف."
+    override val openAppSettingsBtn = "App Settings / إعدادات التطبيق"
+    override val emptyEmergencyContactsMsg = "No emergency contacts yet. Tap + to pick a contact from your phone."
     override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
     override val writeContactsPermDialogTitle = "Star Emergency Contact (تمييز جهة الطوارئ بنجمة)"
-    override val writeContactsPermDialogBody = "To let emergency calls ring through Do Not Disturb automatically, the app needs Contacts write access to star the contact in your phonebook. If denied, manual saving still works.\n\nلكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيستمر حفظ جهة الطوارئ يدوياً داخل التطبيق."
+    override val writeContactsPermDialogBody = "To let emergency calls ring through Do Not Disturb automatically, the app needs Contacts write access to star the contact in your phonebook. If denied, the contact is still saved inside the app.\n\nلكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيظل حفظ جهة الاتصال المختارة متاحاً داخل التطبيق."
     override val writeContactsPermAllowBtn = "Allow & Star / السماح والتمييز بنجمة"
-    override val saveManualWithoutStarBtn = "Save manually without star / حفظ يدوياً بدون نجمة"
+    override val saveWithoutStarBtn = "Save without star / حفظ بدون نجمة"
     override val screenNotificationAccess = "Notification Access (Backup)"
     override val notifAccessSubtitle = "Backup path for emergency alerts only when system Do Not Disturb is not enough."
     override val notifAccessWarningOffTitle = "Warning: Notification Access is currently OFF"
@@ -1082,27 +1042,6 @@ private object EnglishAppStrings : AppStrings() {
     override val openNotifListenerSettingsBtn = "Open Notification Listener Settings"
     override val notifAccessManageBtn = "Notification Access (Backup)"
     override val normalCallerAutomaticLabel = "Normal Caller (Automatic)"
-    override val repeatCallsTitle = "المكالمات المتكررة (Repeat calls)"
-    override val repeatCallsExplain = "السماح بمرور المكالمة ورنين الهاتف أثناء عدم الإزعاج إذا تكرر الاتصال من نفس الرقم N مرات خلال M دقيقة."
-    override val repeatCallsSwitchLabel = "تفعيل المكالمات المتكررة (Repeat calls)"
-    override val repeatCallsOffStatus = "متوقف — لن تتجاوز المكالمات المتكررة عدم الإزعاج"
-    override val repeatCallsCountLabel = "عدد المكالمات المطلوبة (N)"
-    override val repeatCallsWindowLabel = "خلال مدة بالدقائق (M)"
-    override val repeatCallsOsPolicyNote = "عند ضبط N = 2 خلال 15 دقيقة يتم استخدام سياسة النظام مباشرة عند توفرها."
-    override val repeatCallsAppCountingNote = "يعدّ التطبيق المكالمات محلياً ويرفع عدم الإزعاج عند المكالمة المطلوبة ثم يستعيد الحالة بعد الانتهاء."
-    override val callLogPermDialogTitle = "إذن سجل المكالمات وحالة الهاتف"
-    override val callLogPermDialogBody = "لعدّ المكالمات المتكررة (مثل 3 مكالمات خلال 15 دقيقة أو قواعد الأشخاص المخصصة) ورفع وضع عدم الإزعاج للمكالمة المطلوبة ثم استعادة حالتك السابقة، يحتاج التطبيق إلى إذن قراءة سجل المكالمات وحالة الهاتف."
-    override val callLogPermAllowBtn = "السماح والتمكين"
-    override val grantCallLogPermBtn = "منح إذن سجل المكالمات للعدّ التلقائي"
-    override val callLogPermGrantedBadge = "إذن عدّ المكالمات مفعّل"
-    override val enableCallScreeningBtn = "تفعيل فحص المكالمات بالنظام (اختياري)"
-    override val perPersonRepeatTitle = "تخصيص لأشخاص محددين"
-    override val perPersonRepeatExplain = "اختر أشخاصاً محددين ليتجاوزوا عدم الإزعاج بعد N مكالمات خلال M دقيقة الخاصة بهم. البقية يتبعون الإعداد العام."
-    override val addRepeatPersonManualBtn = "إضافة شخص يدوياً"
-    override val editRepeatPersonTitle = "تعديل قاعدة المكالمات المتكررة"
-    override val addRepeatPersonTitle = "تخصيص مكالمات متكررة لشخص"
-    override val noPerPersonRepeatMsg = "لا يوجد أشخاص مخصصون بعد — الجميع يتبعون الإعداد العام."
-    override val deleteRepeatPersonTitle = "حذف التخصيص؟"
     override val notifSubtitle = "Synthetic demonstration data — does not read real OS notifications."
     override val simulatedAlertsLabel = "Simulated Alerts"
     override val importantLabel = "Important"
@@ -1524,34 +1463,26 @@ private object ArabicAppStrings : AppStrings() {
     override val simTraceFinal = "النتيجة النهائية المحاكاة"
     override val contactsSubtitle = "جهات الطوارئ تصلك مكالماتها وإشعاراتها دائماً وتجتاز أي روتين أو وضع صامت أو عدم إزعاج."
     override val interruptionTesterTitle = "اختبار المقاطعات الواردة"
-    override val repeatCallerLabel = "محاكاة متصل متكرر (مكالمة ثانية خلال 3 دقائق)"
     override val testCallBtn = "اختبار مكالمة"
     override val testMsgBtn = "اختبار رسالة"
     override val allowedUpper = "مسموح"
     override val blockedUpper = "محجوب"
-    override val addContactTitle = "إضافة جهة طوارئ"
-    override val editContactTitle = "تعديل جهة الطوارئ"
-    override val contactNameLabel = "الاسم *"
-    override val contactPhoneLabel = "رقم الهاتف"
-    override val contactRelLabel = "صفة العلاقة"
-    override val contactTypesLabel = "أنواع المقاطعة المسموحة"
-    override val allowRepeatCallers = "السماح للمتصل المتكرر"
-    override val contactNameError = "يرجى إدخال اسم جهة الاتصال."
     override val removeContactTitle = "إزالة جهة الطوارئ؟"
     override val removeContactMsg = "هل تريد إزالة جهة الاتصال من الطوارئ؟ ستصبح كأي متصل عادي تلقائياً."
     override val removeBtn = "إزالة"
     override val chooseFromPhoneContactsBtn = "اختيار من جهات اتصال الهاتف"
-    override val addManuallyBtn = "إضافة يدوياً"
     override val contactsPermDialogTitle = "إذن الوصول إلى جهات الاتصال"
-    override val contactsPermDialogBody = "يحتاج التطبيق إلى إذن قراءة وتعديل جهات الاتصال لاختيار جهة طوارئ وحفظ اسمها ورقمها وتمييزها بنجمة في هاتفك حتى تصلك مكالماتها أثناء عدم الإزعاج. إذا رفضت الإذن، سيظل الإدخال اليدوي متاحاً دائماً."
+    override val contactsPermDialogBody = "يحتاج التطبيق إلى إذن قراءة جهات الاتصال لاختيار جهة طوارئ من هاتفك وحفظ اسمها ورقمها حتى تصلك مكالماتها وإشعاراتها دائماً."
     override val contactsPermAllowBtn = "السماح والاختيار"
-    override val contactsPermDeniedTitle = "تم رفض الإذن"
-    override val contactsPermDeniedBody = "لم يتم منح إذن جهات الاتصال. يمكنك الاستمرار في إضافة جهات الطوارئ وحفظ أرقامها يدوياً."
+    override val contactsPermDeniedTitle = "مطلوب إذن جهات الاتصال"
+    override val contactsPermDeniedBody = "لم يتم منح إذن جهات الاتصال. يرجى تفعيله من إعدادات التطبيق لتتمكن من اختيار جهة طوارئ من الهاتف."
+    override val openAppSettingsBtn = "إعدادات التطبيق"
+    override val emptyEmergencyContactsMsg = "لا توجد جهات طوارئ بعد. اضغط + لاختيار جهة اتصال من الهاتف."
     override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
     override val writeContactsPermDialogTitle = "تمييز جهة الطوارئ بنجمة"
-    override val writeContactsPermDialogBody = "لكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيستمر حفظ جهة الطوارئ يدوياً داخل التطبيق."
+    override val writeContactsPermDialogBody = "لكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيظل حفظ جهة الاتصال المختارة متاحاً داخل التطبيق."
     override val writeContactsPermAllowBtn = "السماح والتمييز بنجمة"
-    override val saveManualWithoutStarBtn = "حفظ يدوياً بدون نجمة"
+    override val saveWithoutStarBtn = "حفظ بدون نجمة"
     override val screenNotificationAccess = "الوصول للإشعارات (احتياطي)"
     override val notifAccessSubtitle = "مسار احتياطي لتنبيهات الطوارئ فقط عندما لا يكفي وضع عدم الإزعاج للنظام."
     override val notifAccessWarningOffTitle = "تحذير: إذن الوصول للإشعارات متوقف حالياً"
@@ -1563,27 +1494,6 @@ private object ArabicAppStrings : AppStrings() {
     override val openNotifListenerSettingsBtn = "فتح إعدادات الوصول للإشعارات"
     override val notifAccessManageBtn = "الوصول للإشعارات (احتياطي)"
     override val normalCallerAutomaticLabel = "متصل عادي (تلقائي)"
-    override val repeatCallsTitle = "المكالمات المتكررة"
-    override val repeatCallsExplain = "السماح للمكالمات المتكررة من نفس الرقم باختراق عدم الإزعاج ورنين الهاتف عند تكرارها N مرات خلال M دقيقة."
-    override val repeatCallsSwitchLabel = "تفعيل المكالمات المتكررة"
-    override val repeatCallsOffStatus = "متوقف — لا تمر المكالمات المتكررة أثناء عدم الإزعاج"
-    override val repeatCallsCountLabel = "عدد المكالمات (N)"
-    override val repeatCallsWindowLabel = "خلال دقائق (M)"
-    override val repeatCallsOsPolicyNote = "عند اختيار مكالمتين خلال 15 دقيقة يستخدم التطبيق سياسة النظام للمتصل المتكرر متى أمكن."
-    override val repeatCallsAppCountingNote = "يعدّ التطبيق المكالمات الواردة ويرفع عدم الإزعاج عند المكالمة المطلوبة ثم يستعيد الحالة السابقة بعد انتهائها."
-    override val callLogPermDialogTitle = "إذن سجل المكالمات وحالة الهاتف"
-    override val callLogPermDialogBody = "لعدّ المكالمات المتكررة من نفس الرقم (أو لقواعد الأشخاص المخصصة) ورفع عدم الإزعاج مؤقتاً عند المكالمة المطلوبة ثم استعادة الحالة السابقة، يحتاج التطبيق إلى إذن قراءة سجل المكالمات وحالة الهاتف."
-    override val callLogPermAllowBtn = "السماح والتمكين"
-    override val grantCallLogPermBtn = "منح إذن سجل المكالمات للعدّ التلقائي"
-    override val callLogPermGrantedBadge = "إذن عدّ المكالمات مفعّل"
-    override val enableCallScreeningBtn = "تفعيل فحص المكالمات بالنظام (اختياري)"
-    override val perPersonRepeatTitle = "تخصيص لأشخاص محددين"
-    override val perPersonRepeatExplain = "اختر أشخاصاً محددين بعدد مكالمات N ومدة M خاصة بهم؛ وبقية الأشخاص يتبعون الإعداد العام."
-    override val addRepeatPersonManualBtn = "إضافة شخص يدوياً"
-    override val editRepeatPersonTitle = "تعديل قاعدة المكالمات المتكررة"
-    override val addRepeatPersonTitle = "إضافة شخص للمكالمات المتكررة"
-    override val noPerPersonRepeatMsg = "لا يوجد أشخاص مخصصون بعد — جميع الأرقام تتبع الإعداد العام."
-    override val deleteRepeatPersonTitle = "إزالة التخصيص؟"
     override val notifSubtitle = "بيانات تجريبية محاكاة — لا يقرأ التطبيق إشعارات النظام الحقيقية."
     override val simulatedAlertsLabel = "تنبيهات محاكاة"
     override val importantLabel = "مهمة"

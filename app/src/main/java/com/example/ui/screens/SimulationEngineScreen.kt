@@ -257,7 +257,7 @@ fun SimulationEngineScreen(
                 ) {
                     Button(
                         onClick = {
-                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.CALL, false)
+                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.CALL)
                         },
                         modifier = Modifier.testTag("sim_incoming_call_btn")
                     ) {
@@ -267,7 +267,7 @@ fun SimulationEngineScreen(
                     }
                     OutlinedButton(
                         onClick = {
-                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.MESSAGE, false)
+                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.MESSAGE)
                         },
                         modifier = Modifier.testTag("sim_incoming_msg_btn")
                     ) {

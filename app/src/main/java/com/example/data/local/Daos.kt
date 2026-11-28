@@ -144,21 +144,3 @@ interface RoutineLogDao {
     suspend fun clearAll()
 }
 
-@Dao
-interface RepeatCallerDao {
-    @Query("SELECT * FROM repeat_caller_rules ORDER BY name ASC")
-    fun observeAll(): Flow<List<RepeatCallerEntity>>
-
-    @Query("SELECT * FROM repeat_caller_rules ORDER BY name ASC")
-    suspend fun getAllOnce(): List<RepeatCallerEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(item: RepeatCallerEntity)
-
-    @Query("DELETE FROM repeat_caller_rules WHERE id = :id")
-    suspend fun deleteById(id: String)
-
-    @Query("DELETE FROM repeat_caller_rules")
-    suspend fun clearAll()
-}
-

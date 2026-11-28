@@ -14,13 +14,8 @@ import com.example.automation.EmergencyBypassBackupStore
 import com.example.automation.EmergencyBypassController
 import com.example.automation.EmergencyPhoneNumberUtils
 import com.example.automation.InMemoryEmergencyBypassBackupStore
-import com.example.automation.InMemoryRepeatCallHistoryStore
 import com.example.automation.InMemoryRoutineStateBackupStore
 import com.example.automation.NoOpRoutineAlarmScheduler
-import com.example.automation.RepeatCallEvaluation
-import com.example.automation.RepeatCallHistoryStore
-import com.example.automation.RepeatCallPolicyResolver
-import com.example.automation.RepeatCallTracker
 import com.example.automation.RoutineAlarmCalculator
 import com.example.automation.RoutineAlarmSchedulerGateway
 import com.example.automation.RoutinePhoneController
@@ -43,7 +38,6 @@ import com.example.models.InterruptionDecision
 import com.example.models.InterruptionType
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
-import com.example.models.RepeatCallerRule
 import com.example.models.RoutineLogEntry
 import com.example.models.RoutineLogEventType
 import com.example.models.RoutineProposal
@@ -113,7 +107,6 @@ data class SmartCompanionUiState(
     val profiles: List<SmartProfile> = emptyList(),
     val routines: List<SmartRoutine> = emptyList(),
     val contacts: List<PriorityContact> = emptyList(),
-    val repeatCallerRules: List<RepeatCallerRule> = emptyList(),
     val activityEvents: List<ActivityEvent> = emptyList(),
     val focusSessions: List<FocusSessionRecord> = emptyList(),
     val notificationStats: List<NotificationStat> = emptyList(),
@@ -149,12 +142,10 @@ class SmartCompanionViewModel(
     private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
     private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> },
     private val emergencyBypassBackupStore: EmergencyBypassBackupStore = InMemoryEmergencyBypassBackupStore(),
-    private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false },
-    private val repeatCallHistoryStore: RepeatCallHistoryStore = InMemoryRepeatCallHistoryStore()
+    private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false }
 ) : ViewModel() {
 
     private val routinePhoneController = RoutinePhoneController(phoneControlManager, routineBackupStore)
-    private val repeatCallTracker = RepeatCallTracker(repeatCallHistoryStore)
 
     private val _activeFocus = MutableStateFlow(ActiveFocusSession())
     private val _lastCompletedFocusSummary = MutableStateFlow<String?>(null)
@@ -175,21 +166,14 @@ class SmartCompanionViewModel(
 
     private var focusTimerJob: Job? = null
 
-    private val contactsAndRulesFlow = combine(
-        repository.contacts,
-        repository.repeatCallerRules
-    ) { contacts, repeatRules ->
-        contacts to repeatRules
-    }
-
     private val coreDataFlow = combine(
         repository.preferences,
         repository.profiles,
         repository.routines,
-        contactsAndRulesFlow,
+        repository.contacts,
         repository.activityEvents
-    ) { prefs, profiles, routines, (contacts, repeatRules), events ->
-        CoreBundle(prefs, profiles, routines, contacts, repeatRules, events)
+    ) { prefs, profiles, routines, contacts, events ->
+        CoreBundle(prefs, profiles, routines, contacts, events)
     }
 
     private val secondaryDataFlow = combine(
@@ -245,7 +229,6 @@ class SmartCompanionViewModel(
             profiles = core.profiles,
             routines = core.routines,
             contacts = core.contacts,
-            repeatCallerRules = core.repeatCallerRules,
             activityEvents = core.events,
             focusSessions = sec.focusSessions,
             notificationStats = sec.notificationStats,
@@ -283,13 +266,6 @@ class SmartCompanionViewModel(
     }
 
     private fun isArabic(): Boolean = uiState.value.preferences.language == AppLanguage.ARABIC
-
-    private fun allowOsRepeatCallers(prefs: AppPreferences = uiState.value.preferences): Boolean =
-        RepeatCallPolicyResolver.shouldUseOsRepeatCallersPolicy(
-            globalEnabled = prefs.repeatCallsEnabled,
-            globalRequiredCalls = prefs.repeatCallCount,
-            globalWindowMinutes = prefs.repeatCallWindowMinutes
-        )
 
     fun clearFeedbackBanner() {
         _feedbackBanner.value = null
@@ -396,8 +372,7 @@ class SmartCompanionViewModel(
 
     fun toggleRealDoNotDisturb() {
         val result = phoneControlManager.toggleDoNotDisturb(
-            allowStarredContacts = true,
-            allowRepeatCallers = allowOsRepeatCallers()
+            allowStarredContacts = true
         )
         val ar = isArabic()
         if (result.permissionRequired) {
@@ -480,8 +455,7 @@ class SmartCompanionViewModel(
             val ringerRes = phoneControlManager.applyRingerMode(profile.soundMode)
             val dndRes = phoneControlManager.setDoNotDisturbEnabled(
                 enabled = wantsDnd,
-                allowStarredContacts = allowStarred,
-                allowRepeatCallers = allowOsRepeatCallers(current.preferences)
+                allowStarredContacts = allowStarred
             )
 
             if (!ringerRes.success || !dndRes.success) {
@@ -953,8 +927,7 @@ class SmartCompanionViewModel(
             profiles = profiles,
             isArabic = ar,
             timestampMillis = now,
-            hasEmergencyContacts = hasEmergencyContacts,
-            allowOsRepeatCallers = allowOsRepeatCallers()
+            hasEmergencyContacts = hasEmergencyContacts
         )
         if (outcome.permissionRequired) {
             repository.addRoutineLog(outcome.logEntry)
@@ -1036,8 +1009,7 @@ class SmartCompanionViewModel(
                 profiles = uiState.value.profiles,
                 isArabic = ar,
                 timestampMillis = now,
-                hasEmergencyContacts = hasEmergencyContacts,
-                allowOsRepeatCallers = allowOsRepeatCallers()
+                hasEmergencyContacts = hasEmergencyContacts
             )
             repository.addRoutineLog(outcome.logEntry)
 
@@ -1519,7 +1491,6 @@ class SmartCompanionViewModel(
         customLocationName: String? = null,
         activity: SimulatedActivity? = null,
         customActivityName: String? = null,
-        repeatCallerDetected: Boolean? = null,
         evaluateEngine: Boolean = false
     ) {
         viewModelScope.launch {
@@ -1531,8 +1502,7 @@ class SmartCompanionViewModel(
                 location = location ?: prev.location,
                 customLocationName = customLocationName ?: prev.customLocationName,
                 activity = activity ?: prev.activity,
-                customActivityName = customActivityName ?: prev.customActivityName,
-                repeatCallerDetected = repeatCallerDetected ?: prev.repeatCallerDetected
+                customActivityName = customActivityName ?: prev.customActivityName
             )
             repository.setSimulatedContext(next)
             repository.logEvent(
@@ -1635,6 +1605,15 @@ class SmartCompanionViewModel(
         }
     }
 
+    fun notifyPickedContactMissingPhoneNumber(contactName: String) {
+        val ar = isArabic()
+        val label = contactName.trim().ifBlank { if (ar) "جهة الاتصال" else "Contact" }
+        showBanner(
+            if (ar) "جهة الاتصال '$label' لا تحتوي على رقم هاتف صالح."
+            else "Picked contact '$label' has no phone number."
+        )
+    }
+
     @JvmOverloads
     suspend fun savePickedEmergencyContact(
         name: String,
@@ -1655,11 +1634,9 @@ class SmartCompanionViewModel(
             priorityLevel = ContactPriority.EMERGENCY,
             allowedInterruptions = listOf(
                 InterruptionType.CALL,
-                InterruptionType.MESSAGE,
-                InterruptionType.REPEAT_CALLER
+                InterruptionType.MESSAGE
             ),
             isEnabled = true,
-            allowRepeatCallers = true,
             phoneNumber = phoneNumber.trim(),
             systemContactId = systemContactId
         )
@@ -1726,158 +1703,11 @@ class SmartCompanionViewModel(
         }
     }
 
-    // --- Repeat Calls Global Setting & Per-Person Rules ---
-    fun setRepeatCallsConfig(
-        enabled: Boolean,
-        requiredCalls: Int,
-        windowMinutes: Int
-    ) {
-        viewModelScope.launch {
-            val safeCalls = requiredCalls.coerceIn(2, 20)
-            val safeWindow = windowMinutes.coerceIn(1, 240)
-            repository.setRepeatCallsConfig(
-                enabled = enabled,
-                requiredCalls = safeCalls,
-                windowMinutes = safeWindow
-            )
-            val useOsPolicy = RepeatCallPolicyResolver.shouldUseOsRepeatCallersPolicy(
-                globalEnabled = enabled,
-                globalRequiredCalls = safeCalls,
-                globalWindowMinutes = safeWindow
-            )
-            if (phoneControlManager.refreshPermissionAndDeviceState().hasDndAccess) {
-                phoneControlManager.syncRepeatCallersPolicy(
-                    allowStarredContacts = true,
-                    allowRepeatCallers = useOsPolicy
-                )
-            }
-            val ar = isArabic()
-            val summary = if (!enabled) {
-                if (ar) "المكالمات المتكررة: متوقف" else "Repeat calls: Off"
-            } else {
-                if (ar) "المكالمات المتكررة: $safeCalls مكالمات خلال $safeWindow دقيقة"
-                else "Repeat calls: $safeCalls calls within $safeWindow min"
-            }
-            repository.logEvent(
-                title = if (ar) "تحديث إعداد المكالمات المتكررة" else "Repeat Calls Setting Updated",
-                category = EventCategory.CONTACT_EXCEPTION,
-                triggerSource = if (ar) "إعدادات المكالمات المتكررة" else "Repeat Calls Settings",
-                result = summary,
-                explanation = if (useOsPolicy) {
-                    if (ar) "يتم استخدام سياسة النظام للمتصل المتكرر (مكالمتان خلال 15 دقيقة)." else "Using Android OS repeat-callers policy (2 calls in 15 min)."
-                } else {
-                    if (ar) "يتولى التطبيق عد المكالمات ورفع عدم الإزعاج مؤقتاً عند تحقق الشرط." else "App counts incoming calls and temporarily lifts DND when threshold is met."
-                }
-            )
-            showBanner(summary)
-        }
-    }
-
-    fun saveRepeatCallerRule(rule: RepeatCallerRule) {
-        viewModelScope.launch {
-            saveRepeatCallerRuleChecked(rule)
-        }
-    }
-
-    suspend fun saveRepeatCallerRuleChecked(rule: RepeatCallerRule): Boolean {
-        val ar = isArabic()
-        val cleaned = rule.copy(
-            name = rule.name.trim().ifBlank { rule.phoneNumber.trim() },
-            phoneNumber = rule.phoneNumber.trim(),
-            requiredCalls = rule.requiredCalls.coerceIn(2, 20),
-            windowMinutes = rule.windowMinutes.coerceIn(1, 240)
-        )
-        if (cleaned.phoneNumber.isBlank()) {
-            showBanner(if (ar) "يرجى إدخال رقم الهاتف" else "Please enter a phone number")
-            return false
-        }
-        val existingRules = repository.getAllRepeatCallerRulesOnce()
-        val duplicate = existingRules.firstOrNull {
-            it.id != cleaned.id && EmergencyPhoneNumberUtils.numbersMatch(it.phoneNumber, cleaned.phoneNumber)
-        }
-        if (duplicate != null) {
-            val msg = if (ar) {
-                "يوجد تخصيص مسبق لهذا الرقم باسم '${duplicate.name}'"
-            } else {
-                "A repeat-call rule already exists for '${duplicate.name}'"
-            }
-            showBanner(msg)
-            showRestoreToast(msg)
-            return false
-        }
-        repository.upsertRepeatCallerRule(cleaned)
-        val msg = if (ar) {
-            "تم حفظ قاعدة '${cleaned.name}': ${cleaned.requiredCalls} مكالمات خلال ${cleaned.windowMinutes} دقيقة"
-        } else {
-            "Saved rule for '${cleaned.name}': ${cleaned.requiredCalls} calls in ${cleaned.windowMinutes} min"
-        }
-        repository.logEvent(
-            title = if (ar) "تخصيص مكالمات متكررة: ${cleaned.name}" else "Per-Person Repeat Rule: ${cleaned.name}",
-            category = EventCategory.CONTACT_EXCEPTION,
-            triggerSource = if (ar) "المكالمات المتكررة" else "Repeat Calls",
-            result = "${cleaned.requiredCalls} / ${cleaned.windowMinutes}m",
-            explanation = msg
-        )
-        showBanner(msg)
-        return true
-    }
-
-    @JvmOverloads
-    fun savePickedRepeatCallerRule(
-        name: String,
-        phoneNumber: String,
-        requiredCalls: Int,
-        windowMinutes: Int,
-        systemContactId: String = ""
-    ) {
-        viewModelScope.launch {
-            saveRepeatCallerRuleChecked(
-                RepeatCallerRule(
-                    id = "repeat_${UUID.randomUUID().toString().take(8)}",
-                    name = name.trim().ifBlank { phoneNumber.trim() },
-                    phoneNumber = phoneNumber.trim(),
-                    requiredCalls = requiredCalls.coerceIn(2, 20),
-                    windowMinutes = windowMinutes.coerceIn(1, 240),
-                    isEnabled = true,
-                    systemContactId = systemContactId
-                )
-            )
-        }
-    }
-
-    fun deleteRepeatCallerRule(rule: RepeatCallerRule) {
-        viewModelScope.launch {
-            repository.deleteRepeatCallerRule(rule.id)
-            showBanner(
-                if (isArabic()) "تمت إزالة قاعدة المكالمات المتكررة لـ '${rule.name}'"
-                else "Removed repeat rule for '${rule.name}'"
-            )
-        }
-    }
-
-    fun recordAndEvaluateRepeatCall(
-        phoneNumber: String,
-        timestampMillis: Long = System.currentTimeMillis()
-    ): RepeatCallEvaluation {
-        val current = uiState.value
-        return repeatCallTracker.recordAndEvaluateIncomingCall(
-            phoneNumber = phoneNumber,
-            timestampMillis = timestampMillis,
-            emergencyContacts = current.contacts,
-            perPersonRules = current.repeatCallerRules,
-            globalEnabled = current.preferences.repeatCallsEnabled,
-            globalRequiredCalls = current.preferences.repeatCallCount,
-            globalWindowMinutes = current.preferences.repeatCallWindowMinutes
-        )
-    }
-
     @JvmOverloads
     fun simulateIncomingInterruption(
         contact: PriorityContact?,
         type: InterruptionType,
-        isRepeatCaller: Boolean,
-        callerName: String = contact?.name ?: if (isArabic()) "متصل عادي" else "Normal Caller",
-        perPersonRule: RepeatCallerRule? = null
+        callerName: String = contact?.name ?: if (isArabic()) "متصل عادي" else "Normal Caller"
     ): InterruptionDecision {
         val current = uiState.value
         val currentLanguage = current.preferences.language
@@ -1900,13 +1730,8 @@ class SmartCompanionViewModel(
         val decision = simulationEngine.simulateIncomingInterruption(
             contact = contact,
             interruptionType = type,
-            isRepeatCaller = isRepeatCaller,
             activeProfile = activeProfile,
-            callerName = callerName,
-            globalRepeatCallsEnabled = current.preferences.repeatCallsEnabled,
-            globalRepeatCount = current.preferences.repeatCallCount,
-            globalRepeatWindowMinutes = current.preferences.repeatCallWindowMinutes,
-            perPersonRule = perPersonRule
+            callerName = callerName
         )
         _lastInterruption.value = decision
 
@@ -2469,8 +2294,8 @@ class SmartCompanionViewModel(
                             )
                         )
                     }
-                    val normalDecision = simulateIncomingInterruption(null, InterruptionType.CALL, false, callerName = normalCallerName)
-                    val emergencyDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, false, callerName = emergencyContact?.name ?: "Emergency")
+                    val normalDecision = simulateIncomingInterruption(null, InterruptionType.CALL, callerName = normalCallerName)
+                    val emergencyDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, callerName = emergencyContact?.name ?: "Emergency")
                     val emergLabel = emergencyContact?.name ?: if (ar) "طوارئ" else "Emergency"
                     _demoScenarioResult.value = DemoScenarioStepResult(
                         scenarioTitle = if (ar) "السيناريو 1: وقت الدراسة" else "Scenario 1: Study Time",
@@ -2494,8 +2319,8 @@ class SmartCompanionViewModel(
                         DeviceActionCommand.ActivateProfileState(sleepProfile.id, sleepProfile.name, SoundMode.SILENT)
                     )
                     repository.savePhoneState(sleepProfile.id, SoundMode.SILENT, isAutomationPaused = false)
-                    val msgDecision = simulateIncomingInterruption(null, InterruptionType.MESSAGE, false, callerName = normalCallerName)
-                    val callDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, false, callerName = emergencyContact?.name ?: "Emergency")
+                    val msgDecision = simulateIncomingInterruption(null, InterruptionType.MESSAGE, callerName = normalCallerName)
+                    val callDecision = simulateIncomingInterruption(emergencyContact, InterruptionType.CALL, callerName = emergencyContact?.name ?: "Emergency")
                     val emergLabel = emergencyContact?.name ?: if (ar) "طوارئ" else "Emergency"
                     _demoScenarioResult.value = DemoScenarioStepResult(
                         scenarioTitle = if (ar) "السيناريو 2: حماية النوم" else "Scenario 2: Sleep Protection",
@@ -2704,7 +2529,6 @@ class SmartCompanionViewModel(
         val profiles: List<SmartProfile>,
         val routines: List<SmartRoutine>,
         val contacts: List<PriorityContact>,
-        val repeatCallerRules: List<RepeatCallerRule>,
         val events: List<ActivityEvent>
     )
 
@@ -2748,8 +2572,7 @@ class SmartCompanionViewModel(
         private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
         private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> },
         private val emergencyBypassBackupStore: EmergencyBypassBackupStore = InMemoryEmergencyBypassBackupStore(),
-        private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false },
-        private val repeatCallHistoryStore: RepeatCallHistoryStore = InMemoryRepeatCallHistoryStore()
+        private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false }
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -2761,8 +2584,7 @@ class SmartCompanionViewModel(
                 alarmScheduler = alarmScheduler,
                 onDndPermissionMissingNotification = onDndPermissionMissingNotification,
                 emergencyBypassBackupStore = emergencyBypassBackupStore,
-                onStarEmergencyContact = onStarEmergencyContact,
-                repeatCallHistoryStore = repeatCallHistoryStore
+                onStarEmergencyContact = onStarEmergencyContact
             ) as T
         }
     }

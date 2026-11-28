@@ -41,8 +41,7 @@ enum class ContactPriority(val displayName: String, val rank: Int) {
 
 enum class InterruptionType(val displayName: String) {
     CALL("Calls"),
-    MESSAGE("Messages"),
-    REPEAT_CALLER("Repeat Caller")
+    MESSAGE("Messages")
 }
 
 enum class TriggerType(val displayName: String) {
