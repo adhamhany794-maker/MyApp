@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Restore
@@ -498,6 +499,25 @@ fun SettingsScreen(
                         accentColor = StatusEmerald,
                         onClick = { onNavigate(NavRoutes.CONTACTS) },
                         modifier = Modifier.testTag("settings_contacts_row")
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    // Backup Notification Access
+                    SettingsNavRow(
+                        title = strings.screenNotificationAccess,
+                        subtitle = if (state.phoneControl.hasNotificationListenerAccess) {
+                            strings.notifAccessActiveTitle
+                        } else {
+                            strings.notifAccessWarningOffTitle
+                        },
+                        icon = Icons.Rounded.NotificationsActive,
+                        accentColor = if (state.phoneControl.hasNotificationListenerAccess) StatusEmerald else StatusAmber,
+                        onClick = { onNavigate(NavRoutes.NOTIFICATION_ACCESS) },
+                        modifier = Modifier.testTag("settings_notification_access_row")
                     )
 
                     HorizontalDivider(

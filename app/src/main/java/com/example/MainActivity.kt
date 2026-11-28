@@ -7,7 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import com.example.assistant.GeminiAssistantEngine
 import com.example.automation.AndroidRoutineAlarmScheduler
+import com.example.automation.PhoneContactPickerResolver
 import com.example.automation.RoutineNotificationHelper
+import com.example.automation.SharedPreferencesEmergencyBypassBackupStore
 import com.example.automation.SharedPreferencesRoutineStateBackupStore
 import com.example.data.PreferencesManager
 import com.example.data.local.AppDatabase
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
         val assistantEngine = GeminiAssistantEngine(applicationContext)
         val phoneControlManager = PhoneControlManager(AndroidPhoneControlGateway(applicationContext))
         val backupStore = SharedPreferencesRoutineStateBackupStore(applicationContext)
+        val bypassBackupStore = SharedPreferencesEmergencyBypassBackupStore(applicationContext)
         val alarmScheduler = AndroidRoutineAlarmScheduler(applicationContext)
         val viewModel = ViewModelProvider(
             this,
@@ -48,6 +51,14 @@ class MainActivity : ComponentActivity() {
                         context = applicationContext,
                         routineName = routineName,
                         isArabic = isArabic
+                    )
+                },
+                emergencyBypassBackupStore = bypassBackupStore,
+                onStarEmergencyContact = { contact, starred ->
+                    PhoneContactPickerResolver.setContactStarred(
+                        context = applicationContext,
+                        contact = contact,
+                        starred = starred
                     )
                 }
             )

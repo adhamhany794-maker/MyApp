@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.automation.InMemoryRoutineStateBackupStore
@@ -25,7 +26,9 @@ import com.example.models.SoundMode
 import com.example.repositories.SmartCompanionRepository
 import com.example.simulation.PhoneControlGateway
 import com.example.simulation.PhoneControlManager
+import com.example.simulation.PhoneControlState
 import com.example.ui.screens.ContactsScreen
+import com.example.ui.screens.NotificationAccessScreen
 import com.example.ui.theme.SmartCompanionTheme
 import com.example.utils.stringsFor
 import com.example.viewmodels.SmartCompanionUiState
@@ -122,6 +125,112 @@ class EmergencyContactsUiTest {
             composeRule.onNodeWithTag("fallback_manual_contact_btn").performClick()
             composeRule.onNodeWithTag("contact_name_input").performScrollTo().assertIsDisplayed()
             composeRule.onNodeWithTag("contact_phone_input").performScrollTo().assertIsDisplayed()
+
+            // Entering a manual emergency contact without WRITE_CONTACTS shows the Arabic star rationale dialog first
+            composeRule.onNodeWithTag("contact_name_input").performTextInput("بابا")
+            composeRule.onNodeWithTag("contact_phone_input").performTextInput("01012345678")
+            composeRule.onNodeWithText(arStrings.save).performClick()
+
+            composeRule.onNodeWithTag("write_contacts_rationale_dialog").assertIsDisplayed()
+            composeRule.onNodeWithText(arStrings.writeContactsPermDialogTitle).assertIsDisplayed()
+            composeRule.onNodeWithTag("confirm_write_contacts_permission_btn").assertIsDisplayed()
+            composeRule.onNodeWithTag("skip_write_contacts_btn").performClick()
+
+            composeRule.waitForIdle()
+            val savedContacts = runBlocking { repository.getAllContactsOnce() }
+            org.junit.Assert.assertTrue(savedContacts.any { it.name == "بابا" && it.phoneNumber == "01012345678" })
+        } finally {
+            store.clear()
+            runBlocking { prefs.resetDefaults(preserveOnboarding = false) }
+            db.close()
+        }
+    }
+
+    @Test
+    fun `NotificationAccessScreen displays Arabic warning while off and active badge when enabled`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val prefs = PreferencesManager(context)
+        val repository = SmartCompanionRepository(db, prefs)
+        val store = androidx.lifecycle.ViewModelStore()
+        val viewModel = androidx.lifecycle.ViewModelProvider(
+            store,
+            SmartCompanionViewModel.Factory(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(InertGateway()),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler()
+            )
+        )[SmartCompanionViewModel::class.java]
+        val arStrings = stringsFor(AppLanguage.ARABIC)
+        val offState = SmartCompanionUiState(
+            isReady = true,
+            phoneControl = PhoneControlState(hasNotificationListenerAccess = false)
+        )
+
+        try {
+            composeRule.setContent {
+                SmartCompanionTheme(language = AppLanguage.ARABIC) {
+                    NotificationAccessScreen(
+                        state = offState,
+                        strings = arStrings,
+                        viewModel = viewModel
+                    )
+                }
+            }
+
+            composeRule.onNodeWithTag("notif_access_warning_banner").assertIsDisplayed()
+            composeRule.onNodeWithText(arStrings.notifAccessWarningOffTitle).assertIsDisplayed()
+            composeRule.onNodeWithTag("notification_access_list")
+                .performScrollToNode(hasTestTag("open_notification_listener_settings_btn"))
+            composeRule.onNodeWithTag("open_notification_listener_settings_btn").assertIsDisplayed()
+        } finally {
+            store.clear()
+            runBlocking { prefs.resetDefaults(preserveOnboarding = false) }
+            db.close()
+        }
+    }
+
+    @Test
+    fun `NotificationAccessScreen shows granted badge when notification listener access is enabled`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val prefs = PreferencesManager(context)
+        val repository = SmartCompanionRepository(db, prefs)
+        val store = androidx.lifecycle.ViewModelStore()
+        val viewModel = androidx.lifecycle.ViewModelProvider(
+            store,
+            SmartCompanionViewModel.Factory(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(InertGateway()),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler()
+            )
+        )[SmartCompanionViewModel::class.java]
+        val arStrings = stringsFor(AppLanguage.ARABIC)
+        val onState = SmartCompanionUiState(
+            isReady = true,
+            phoneControl = PhoneControlState(hasNotificationListenerAccess = true)
+        )
+
+        try {
+            composeRule.setContent {
+                SmartCompanionTheme(language = AppLanguage.ARABIC) {
+                    NotificationAccessScreen(
+                        state = onState,
+                        strings = arStrings,
+                        viewModel = viewModel
+                    )
+                }
+            }
+
+            composeRule.onNodeWithTag("notif_access_granted_badge").assertIsDisplayed()
+            composeRule.onNodeWithText(arStrings.notifAccessActiveTitle).assertIsDisplayed()
+            composeRule.onNodeWithTag("notif_access_warning_banner").assertDoesNotExist()
         } finally {
             store.clear()
             runBlocking { prefs.resetDefaults(preserveOnboarding = false) }

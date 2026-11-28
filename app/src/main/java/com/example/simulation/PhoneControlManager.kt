@@ -3,12 +3,15 @@ package com.example.simulation
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
+import com.example.automation.EmergencyNotificationListenerService
 import com.example.models.SoundMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,7 @@ data class PhoneControlState(
     val currentInterruptionFilter: Int = NotificationManager.INTERRUPTION_FILTER_ALL,
     val starredContactsAllowedInDnd: Boolean = false,
     val canScheduleExactAlarms: Boolean = true,
+    val hasNotificationListenerAccess: Boolean = false,
     val lastError: String? = null
 )
 
@@ -51,6 +55,14 @@ interface PhoneControlGateway {
         )
 
     fun canScheduleExactAlarms(): Boolean = true
+
+    fun isNotificationListenerAccessGranted(): Boolean = false
+
+    fun createNotificationListenerSettingsIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+            if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
 
     fun createExactAlarmSettingsIntent(context: Context): Intent {
         val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -210,6 +222,29 @@ class AndroidPhoneControlGateway(
         }
     }
 
+    override fun isNotificationListenerAccessGranted(): Boolean {
+        if (NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)) {
+            return true
+        }
+        val flat = Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        ).orEmpty()
+        val expectedComponent = ComponentName(context, EmergencyNotificationListenerService::class.java)
+        return flat.split(":").any { entry ->
+            val component = ComponentName.unflattenFromString(entry)
+            component == expectedComponent || component?.packageName == context.packageName
+        }
+    }
+
+    override fun createNotificationListenerSettingsIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+            if (context !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
     override fun createExactAlarmSettingsIntent(context: Context): Intent {
         val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
@@ -359,6 +394,10 @@ class PhoneControlManager(
         return gateway.createExactAlarmSettingsIntent(context)
     }
 
+    fun createNotificationListenerSettingsIntent(context: Context): Intent {
+        return gateway.createNotificationListenerSettingsIntent(context)
+    }
+
     private fun readSnapshot(lastError: String?): PhoneControlState {
         val granted = gateway.isNotificationPolicyAccessGranted()
         return PhoneControlState(
@@ -372,6 +411,7 @@ class PhoneControlManager(
             },
             starredContactsAllowedInDnd = if (granted) gateway.isStarredContactsAllowedInDnd() else false,
             canScheduleExactAlarms = gateway.canScheduleExactAlarms(),
+            hasNotificationListenerAccess = gateway.isNotificationListenerAccessGranted(),
             lastError = lastError
         )
     }

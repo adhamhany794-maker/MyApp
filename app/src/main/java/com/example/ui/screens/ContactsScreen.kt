@@ -7,6 +7,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,7 +40,9 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Message
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +76,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.automation.PickedPhoneContact
 import com.example.automation.PhoneContactPickerResolver
 import com.example.models.ContactPriority
 import com.example.models.InterruptionType
@@ -96,9 +104,23 @@ import java.util.UUID
 fun ContactsScreen(
     state: SmartCompanionUiState,
     strings: AppStrings,
-    viewModel: SmartCompanionViewModel
+    viewModel: SmartCompanionViewModel,
+    onOpenNotificationAccess: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPhoneControlState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     var editingContact by remember { mutableStateOf<PriorityContact?>(null) }
     var isNewContact by remember { mutableStateOf(false) }
     var deletingContact by remember { mutableStateOf<PriorityContact?>(null) }
@@ -108,6 +130,9 @@ fun ContactsScreen(
     var showHelp by remember { mutableStateOf(false) }
     var showContactsRationaleDialog by remember { mutableStateOf(false) }
     var showContactsDeniedDialog by remember { mutableStateOf(false) }
+    var showWriteContactsRationaleDialog by remember { mutableStateOf(false) }
+    var pendingManualContactForWritePerm by remember { mutableStateOf<PriorityContact?>(null) }
+    var pendingPickedContactForWritePerm by remember { mutableStateOf<PickedPhoneContact?>(null) }
     var missingNumberNotice by remember { mutableStateOf<String?>(null) }
 
     fun openManualAddDialog(prefillName: String = "") {
@@ -125,16 +150,46 @@ fun ContactsScreen(
         )
     }
 
+    fun hasWriteContactsPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.WRITE_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    val writeContactsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        pendingManualContactForWritePerm?.let { contact ->
+            viewModel.saveContact(contact)
+            pendingManualContactForWritePerm = null
+        }
+        pendingPickedContactForWritePerm?.let { picked ->
+            viewModel.savePickedPhoneContact(
+                name = picked.name,
+                phoneNumber = picked.phoneNumber,
+                systemContactId = picked.systemContactId
+            )
+            pendingPickedContactForWritePerm = null
+        }
+    }
+
     val pickContactLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickContact()
     ) { uri ->
         if (uri != null) {
             val picked = PhoneContactPickerResolver.resolveFromUri(context.contentResolver, uri)
             if (picked != null && picked.phoneNumber.isNotBlank()) {
-                viewModel.savePickedPhoneContact(
-                    name = picked.name,
-                    phoneNumber = picked.phoneNumber
-                )
+                if (hasWriteContactsPermission()) {
+                    viewModel.savePickedPhoneContact(
+                        name = picked.name,
+                        phoneNumber = picked.phoneNumber,
+                        systemContactId = picked.systemContactId
+                    )
+                } else {
+                    pendingPickedContactForWritePerm = picked
+                    showWriteContactsRationaleDialog = true
+                }
             } else {
                 missingNumberNotice = if (strings.isArabic) {
                     "جهة الاتصال المختارة لا تحتوي على رقم هاتف — يمكنك إدخال الرقم يدوياً."
@@ -241,6 +296,58 @@ fun ContactsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // Backup Notification Access status / warning
+            item {
+                val notifAccessOn = state.phoneControl.hasNotificationListenerAccess
+                Surface(
+                    color = if (notifAccessOn) StatusEmerald.copy(alpha = 0.12f)
+                    else StatusAmber.copy(alpha = 0.14f),
+                    border = BorderStroke(
+                        1.dp,
+                        if (notifAccessOn) StatusEmerald.copy(alpha = 0.45f)
+                        else StatusAmber.copy(alpha = 0.50f)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("contacts_notif_backup_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (notifAccessOn) Icons.Rounded.NotificationsActive else Icons.Rounded.WarningAmber,
+                                contentDescription = if (notifAccessOn) strings.notifAccessActiveTitle else strings.notifAccessWarningOffTitle,
+                                tint = if (notifAccessOn) StatusEmerald else StatusAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (notifAccessOn) strings.notifAccessActiveTitle else strings.notifAccessWarningOffTitle,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (notifAccessOn) StatusEmerald else StatusAmber
+                            )
+                        }
+                        Text(
+                            text = if (notifAccessOn) strings.notifAccessActiveBody else strings.notifAccessWarningOffBody,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = onOpenNotificationAccess,
+                            modifier = Modifier.testTag("contacts_notification_access_btn")
+                        ) {
+                            Text(strings.notifAccessManageBtn)
+                        }
+                    }
                 }
             }
 
@@ -569,6 +676,54 @@ fun ContactsScreen(
         )
     }
 
+    if (showWriteContactsRationaleDialog) {
+        val savePendingWithoutStar: () -> Unit = {
+            showWriteContactsRationaleDialog = false
+            pendingManualContactForWritePerm?.let { contact ->
+                viewModel.saveContact(contact)
+                pendingManualContactForWritePerm = null
+            }
+            pendingPickedContactForWritePerm?.let { picked ->
+                viewModel.savePickedPhoneContact(
+                    name = picked.name,
+                    phoneNumber = picked.phoneNumber,
+                    systemContactId = picked.systemContactId
+                )
+                pendingPickedContactForWritePerm = null
+            }
+        }
+        AlertDialog(
+            onDismissRequest = savePendingWithoutStar,
+            modifier = Modifier.testTag("write_contacts_rationale_dialog"),
+            title = { Text(strings.writeContactsPermDialogTitle) },
+            text = {
+                Text(
+                    text = strings.writeContactsPermDialogBody,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showWriteContactsRationaleDialog = false
+                        writeContactsPermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+                    },
+                    modifier = Modifier.testTag("confirm_write_contacts_permission_btn")
+                ) {
+                    Text(strings.writeContactsPermAllowBtn)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = savePendingWithoutStar,
+                    modifier = Modifier.testTag("skip_write_contacts_btn")
+                ) {
+                    Text(strings.saveManualWithoutStarBtn)
+                }
+            }
+        )
+    }
+
     editingContact?.let { draft ->
         ContactEditorDialog(
             initial = draft,
@@ -587,9 +742,14 @@ fun ContactsScreen(
                 }
             } else null,
             onSave = { saved ->
-                viewModel.saveContact(saved)
                 editingContact = null
                 missingNumberNotice = null
+                if (saved.priorityLevel == ContactPriority.EMERGENCY && !hasWriteContactsPermission()) {
+                    pendingManualContactForWritePerm = saved
+                    showWriteContactsRationaleDialog = true
+                } else {
+                    viewModel.saveContact(saved)
+                }
             }
         )
     }

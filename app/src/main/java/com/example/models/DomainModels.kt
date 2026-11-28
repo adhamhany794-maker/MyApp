@@ -94,7 +94,8 @@ data class PriorityContact(
     val allowedInterruptions: List<InterruptionType>,
     val isEnabled: Boolean,
     val allowRepeatCallers: Boolean,
-    val phoneNumber: String = ""
+    val phoneNumber: String = "",
+    val systemContactId: String = ""
 )
 
 data class EmergencyBypassOutcome(

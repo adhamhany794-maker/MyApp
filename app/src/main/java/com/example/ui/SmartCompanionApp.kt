@@ -88,6 +88,7 @@ import com.example.ui.screens.AssistantScreen
 import com.example.ui.screens.ContactsScreen
 import com.example.ui.screens.FocusSessionsScreen
 import com.example.ui.screens.HomeDashboardScreen
+import com.example.ui.screens.NotificationAccessScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfilesScreen
 import com.example.ui.screens.RoutineLogScreen
@@ -211,6 +212,7 @@ fun SmartCompanionApp(
                 currentRoute == NavRoutes.FOCUS -> strings.screenFocus
                 currentRoute == NavRoutes.SIMULATION -> strings.screenSimulation
                 currentRoute == NavRoutes.ROUTINE_LOG -> strings.screenRoutineLog
+                currentRoute == NavRoutes.NOTIFICATION_ACCESS -> strings.screenNotificationAccess
                 currentRoute.startsWith(NavRoutes.RULE_BUILDER) -> strings.screenRuleBuilder
                 else -> strings.appName
             }
@@ -425,7 +427,19 @@ fun SmartCompanionApp(
                             )
                         }
                         composable(NavRoutes.CONTACTS) {
-                            ContactsScreen(state = state, strings = strings, viewModel = viewModel)
+                            ContactsScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel,
+                                onOpenNotificationAccess = { navigateTo(NavRoutes.NOTIFICATION_ACCESS) }
+                            )
+                        }
+                        composable(NavRoutes.NOTIFICATION_ACCESS) {
+                            NotificationAccessScreen(
+                                state = state,
+                                strings = strings,
+                                viewModel = viewModel
+                            )
                         }
                         composable(NavRoutes.ACTIVITY) {
                             ActivityScreen(state = state, strings = strings, viewModel = viewModel)

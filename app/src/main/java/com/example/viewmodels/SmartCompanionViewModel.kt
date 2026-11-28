@@ -10,8 +10,10 @@ import com.example.assistant.AssistantStateSnapshot
 import com.example.assistant.CompanionAssistantEngine
 import com.example.assistant.LocalDemoAssistantEngine
 import com.example.assistant.RoutineTimeParser
+import com.example.automation.EmergencyBypassBackupStore
 import com.example.automation.EmergencyBypassController
 import com.example.automation.EmergencyPhoneNumberUtils
+import com.example.automation.InMemoryEmergencyBypassBackupStore
 import com.example.automation.InMemoryRoutineStateBackupStore
 import com.example.automation.NoOpRoutineAlarmScheduler
 import com.example.automation.RoutineAlarmCalculator
@@ -138,7 +140,9 @@ class SmartCompanionViewModel(
     private val phoneControlManager: PhoneControlManager = PhoneControlManager(),
     private val routineBackupStore: RoutineStateBackupStore = InMemoryRoutineStateBackupStore(),
     private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
-    private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> }
+    private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> },
+    private val emergencyBypassBackupStore: EmergencyBypassBackupStore = InMemoryEmergencyBypassBackupStore(),
+    private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false }
 ) : ViewModel() {
 
     private val routinePhoneController = RoutinePhoneController(phoneControlManager, routineBackupStore)
@@ -325,6 +329,10 @@ class SmartCompanionViewModel(
 
     fun createExactAlarmSettingsIntent(context: Context): Intent {
         return phoneControlManager.createExactAlarmSettingsIntent(context)
+    }
+
+    fun createNotificationListenerSettingsIntent(context: Context): Intent {
+        return phoneControlManager.createNotificationListenerSettingsIntent(context)
     }
 
     fun rescheduleAllAlarms() {
@@ -985,7 +993,7 @@ class SmartCompanionViewModel(
                 lastExecutedAtMillis = now,
                 executionCount = 0,
                 skippedCount = 0,
-                enableDoNotDisturb = false,
+                enableDoNotDisturb = true,
                 isOneTime = true
             )
 
@@ -1522,7 +1530,10 @@ class SmartCompanionViewModel(
 
     // --- Priority Contacts & Interruption Simulator ---
     private val emergencyBypassController by lazy {
-        EmergencyBypassController(phoneControlManager = phoneControlManager)
+        EmergencyBypassController(
+            phoneControlManager = phoneControlManager,
+            backupStore = emergencyBypassBackupStore
+        )
     }
 
     fun saveContact(contact: PriorityContact) {
@@ -1534,6 +1545,7 @@ class SmartCompanionViewModel(
     suspend fun saveContactChecked(contact: PriorityContact): SaveContactResult {
         val ar = isArabic()
         val existingContacts = repository.getAllContactsOnce()
+        val previous = existingContacts.firstOrNull { it.id == contact.id }
         val normalizedPhone = EmergencyPhoneNumberUtils.normalizePhoneNumber(contact.phoneNumber)
         val duplicate = if (normalizedPhone.isNotBlank()) {
             EmergencyPhoneNumberUtils.findDuplicateByNumber(
@@ -1560,6 +1572,11 @@ class SmartCompanionViewModel(
             phoneNumber = contact.phoneNumber.trim()
         )
         repository.upsertContact(cleanedContact)
+        if (cleanedContact.priorityLevel == ContactPriority.EMERGENCY) {
+            onStarEmergencyContact(cleanedContact, true)
+        } else if (previous?.priorityLevel == ContactPriority.EMERGENCY) {
+            onStarEmergencyContact(cleanedContact, false)
+        }
         val statusSuffix = if (cleanedContact.priorityLevel == ContactPriority.EMERGENCY) {
             " • هيوصلك دايما"
         } else {
@@ -1589,13 +1606,19 @@ class SmartCompanionViewModel(
         return SaveContactResult.Saved(cleanedContact)
     }
 
-    fun savePickedPhoneContact(name: String, phoneNumber: String) {
+    @JvmOverloads
+    fun savePickedPhoneContact(name: String, phoneNumber: String, systemContactId: String = "") {
         viewModelScope.launch {
-            savePickedEmergencyContact(name, phoneNumber)
+            savePickedEmergencyContact(name, phoneNumber, systemContactId)
         }
     }
 
-    suspend fun savePickedEmergencyContact(name: String, phoneNumber: String): SaveContactResult {
+    @JvmOverloads
+    suspend fun savePickedEmergencyContact(
+        name: String,
+        phoneNumber: String,
+        systemContactId: String = ""
+    ): SaveContactResult {
         val cleanName = name.trim().ifBlank { phoneNumber.trim() }
         val initials = cleanName.split(" ")
             .filter { it.isNotBlank() }
@@ -1615,7 +1638,8 @@ class SmartCompanionViewModel(
             ),
             isEnabled = true,
             allowRepeatCallers = true,
-            phoneNumber = phoneNumber.trim()
+            phoneNumber = phoneNumber.trim(),
+            systemContactId = systemContactId
         )
         return saveContactChecked(contact)
     }
@@ -1651,7 +1675,7 @@ class SmartCompanionViewModel(
                 repository.logEvent(
                     title = if (ar) "تجاوز طوارئ: ${outcome.matchedContact.name}" else "Emergency Bypass: ${outcome.matchedContact.name}",
                     category = EventCategory.CONTACT_EXCEPTION,
-                    triggerSource = if (outcome.usedOsDndMechanism) "OS DND Priority" else "App Emergency Fallback",
+                    triggerSource = if (outcome.usedOsDndMechanism) "OS DND Priority" else "Notification Listener Backup",
                     result = if (ar) "هيوصلك دايما" else "Always gets through",
                     explanation = outcome.explanation,
                     relatedProfileName = activeName
@@ -1661,15 +1685,22 @@ class SmartCompanionViewModel(
         return outcome
     }
 
+    fun restoreAfterEmergencyBypass(): Boolean {
+        return emergencyBypassController.restoreAfterBypass()
+    }
+
     fun deleteContact(contact: PriorityContact) {
         viewModelScope.launch {
+            if (contact.priorityLevel == ContactPriority.EMERGENCY) {
+                onStarEmergencyContact(contact, false)
+            }
             repository.deleteContact(contact.id)
             repository.logEvent(
                 title = "Removed Contact: ${contact.name}",
                 category = EventCategory.CONTACT_EXCEPTION,
                 triggerSource = "Priority Contacts",
                 result = "Contact deleted",
-                explanation = "Removed synthetic contact after user confirmation."
+                explanation = "Removed emergency/priority contact after user confirmation."
             )
             showBanner(if (isArabic()) "تمت إزالة '${contact.name}'" else "Removed '${contact.name}'")
         }
@@ -2535,7 +2566,9 @@ class SmartCompanionViewModel(
         private val phoneControlManager: PhoneControlManager = PhoneControlManager(),
         private val routineBackupStore: RoutineStateBackupStore = InMemoryRoutineStateBackupStore(),
         private val alarmScheduler: RoutineAlarmSchedulerGateway = NoOpRoutineAlarmScheduler(),
-        private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> }
+        private val onDndPermissionMissingNotification: (routineName: String, isArabic: Boolean) -> Unit = { _, _ -> },
+        private val emergencyBypassBackupStore: EmergencyBypassBackupStore = InMemoryEmergencyBypassBackupStore(),
+        private val onStarEmergencyContact: (contact: PriorityContact, starred: Boolean) -> Boolean = { _, _ -> false }
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -2545,7 +2578,9 @@ class SmartCompanionViewModel(
                 phoneControlManager = phoneControlManager,
                 routineBackupStore = routineBackupStore,
                 alarmScheduler = alarmScheduler,
-                onDndPermissionMissingNotification = onDndPermissionMissingNotification
+                onDndPermissionMissingNotification = onDndPermissionMissingNotification,
+                emergencyBypassBackupStore = emergencyBypassBackupStore,
+                onStarEmergencyContact = onStarEmergencyContact
             ) as T
         }
     }

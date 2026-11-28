@@ -181,7 +181,8 @@ object EntityMappers {
             allowedInterruptions = interruptions,
             isEnabled = isEnabled,
             allowRepeatCallers = allowRepeatCallers,
-            phoneNumber = phoneNumber
+            phoneNumber = phoneNumber,
+            systemContactId = systemContactId
         )
     }
 
@@ -198,7 +199,8 @@ object EntityMappers {
             allowedInterruptionsJson = arr.toString(),
             isEnabled = isEnabled,
             allowRepeatCallers = allowRepeatCallers,
-            phoneNumber = phoneNumber
+            phoneNumber = phoneNumber,
+            systemContactId = systemContactId
         )
     }
 

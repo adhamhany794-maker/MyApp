@@ -316,6 +316,20 @@ abstract class AppStrings {
     abstract val contactsPermDeniedTitle: String
     abstract val contactsPermDeniedBody: String
     abstract val emergencyAlwaysReachesStatus: String
+    abstract val writeContactsPermDialogTitle: String
+    abstract val writeContactsPermDialogBody: String
+    abstract val writeContactsPermAllowBtn: String
+    abstract val saveManualWithoutStarBtn: String
+    abstract val screenNotificationAccess: String
+    abstract val notifAccessSubtitle: String
+    abstract val notifAccessWarningOffTitle: String
+    abstract val notifAccessWarningOffBody: String
+    abstract val notifAccessActiveTitle: String
+    abstract val notifAccessActiveBody: String
+    abstract val notifAccessExplainTitle: String
+    abstract val notifAccessExplainBody: String
+    abstract val openNotifListenerSettingsBtn: String
+    abstract val notifAccessManageBtn: String
 
     // Notification Intelligence
     abstract val notifSubtitle: String
@@ -1046,6 +1060,20 @@ private object EnglishAppStrings : AppStrings() {
     override val contactsPermDeniedTitle = "Permission Denied"
     override val contactsPermDeniedBody = "Contacts permission was denied. You can still add emergency contacts manually.\n\nتم رفض إذن جهات الاتصال، ولا يزال بإمكانك إضافة جهات الطوارئ يدوياً."
     override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
+    override val writeContactsPermDialogTitle = "Star Emergency Contact (تمييز جهة الطوارئ بنجمة)"
+    override val writeContactsPermDialogBody = "To let emergency calls ring through Do Not Disturb automatically, the app needs Contacts write access to star the contact in your phonebook. If denied, manual saving still works.\n\nلكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيستمر حفظ جهة الطوارئ يدوياً داخل التطبيق."
+    override val writeContactsPermAllowBtn = "Allow & Star / السماح والتمييز بنجمة"
+    override val saveManualWithoutStarBtn = "Save manually without star / حفظ يدوياً بدون نجمة"
+    override val screenNotificationAccess = "Notification Access (Backup)"
+    override val notifAccessSubtitle = "Backup path for emergency alerts only when system Do Not Disturb is not enough."
+    override val notifAccessWarningOffTitle = "Warning: Notification Access is currently OFF"
+    override val notifAccessWarningOffBody = "Emergency calls primarily rely on Do Not Disturb and starred phone contacts. Notification access is kept only as a backup."
+    override val notifAccessActiveTitle = "Backup Notification Access is ON"
+    override val notifAccessActiveBody = "Saves your phone ringer and DND state before an emergency bypass and restores it afterward."
+    override val notifAccessExplainTitle = "How backup notification access works"
+    override val notifAccessExplainBody = "• Primary bypass uses Do Not Disturb (Priority / starred contacts allowed) while keeping ringer on Sound.\n• Notification listener is only a backup path.\n• Matches by phone number or exact name only — notification text or title is never used as a name or number.\n• Saves phone state before a backup bypass and restores it afterward."
+    override val openNotifListenerSettingsBtn = "Open Notification Listener Settings"
+    override val notifAccessManageBtn = "Notification Access (Backup)"
     override val notifSubtitle = "Synthetic demonstration data — does not read real OS notifications."
     override val simulatedAlertsLabel = "Simulated Alerts"
     override val importantLabel = "Important"
@@ -1490,11 +1518,25 @@ private object ArabicAppStrings : AppStrings() {
     override val chooseFromPhoneContactsBtn = "اختيار من جهات اتصال الهاتف"
     override val addManuallyBtn = "إضافة يدوياً"
     override val contactsPermDialogTitle = "إذن الوصول إلى جهات الاتصال"
-    override val contactsPermDialogBody = "يحتاج التطبيق إلى إذن قراءة جهات الاتصال لتتمكن من اختيار جهة طوارئ وحفظ اسمها ورقمها تلقائياً حتى تصلك مكالماتها وإشعاراتها دائماً. يمكنك أيضاً الإضافة يدوياً في أي وقت إذا رفضت الإذن."
+    override val contactsPermDialogBody = "يحتاج التطبيق إلى إذن قراءة وتعديل جهات الاتصال لاختيار جهة طوارئ وحفظ اسمها ورقمها وتمييزها بنجمة في هاتفك حتى تصلك مكالماتها أثناء عدم الإزعاج. إذا رفضت الإذن، سيظل الإدخال اليدوي متاحاً دائماً."
     override val contactsPermAllowBtn = "السماح والاختيار"
     override val contactsPermDeniedTitle = "تم رفض الإذن"
     override val contactsPermDeniedBody = "لم يتم منح إذن جهات الاتصال. يمكنك الاستمرار في إضافة جهات الطوارئ وحفظ أرقامها يدوياً."
     override val emergencyAlwaysReachesStatus = "هيوصلك دايما"
+    override val writeContactsPermDialogTitle = "تمييز جهة الطوارئ بنجمة"
+    override val writeContactsPermDialogBody = "لكي تمر مكالمات جهة الطوارئ أثناء وضع عدم الإزعاج تلقائياً، يحتاج التطبيق إلى إذن تعديل جهات الاتصال لتمييزها بنجمة في سجل الهاتف. إذا رفضت الإذن، سيستمر حفظ جهة الطوارئ يدوياً داخل التطبيق."
+    override val writeContactsPermAllowBtn = "السماح والتمييز بنجمة"
+    override val saveManualWithoutStarBtn = "حفظ يدوياً بدون نجمة"
+    override val screenNotificationAccess = "الوصول للإشعارات (احتياطي)"
+    override val notifAccessSubtitle = "مسار احتياطي لتنبيهات الطوارئ فقط عندما لا يكفي وضع عدم الإزعاج للنظام."
+    override val notifAccessWarningOffTitle = "تحذير: إذن الوصول للإشعارات متوقف حالياً"
+    override val notifAccessWarningOffBody = "تعتمد مكالمات الطوارئ أساساً على عدم الإزعاج وتمييز جهات الاتصال بنجمة في الهاتف. تفعيل الوصول للإشعارات يُستخدم كنسخة احتياطية فقط."
+    override val notifAccessActiveTitle = "المسار الاحتياطي للإشعارات مفعّل"
+    override val notifAccessActiveBody = "يحفظ حالة الصوت وعدم الإزعاج قبل التجاوز الطارئ ثم يستعيدها فوراً بعد انتهاء التنبيه."
+    override val notifAccessExplainTitle = "كيف يعمل الوصول الاحتياطي للإشعارات؟"
+    override val notifAccessExplainBody = "• التجاوز الأساسي يعمل عبر وضع عدم الإزعاج (الأولوية للجهات المميزة بنجمة) مع إبقاء الرنين في وضع الصوت.\n• مستمع الإشعارات يظل مساراً احتياطياً فقط.\n• تتم المطابقة برقم الهاتف أو الاسم المطابق تماماً فقط — ولا يُستخدم نص الإشعار أو عنوانه كاسم أو رقم أبداً.\n• يتم حفظ حالة الهاتف قبل أي تجاوز احتياطي واستعادتها بعده."
+    override val openNotifListenerSettingsBtn = "فتح إعدادات الوصول للإشعارات"
+    override val notifAccessManageBtn = "الوصول للإشعارات (احتياطي)"
     override val notifSubtitle = "بيانات تجريبية محاكاة — لا يقرأ التطبيق إشعارات النظام الحقيقية."
     override val simulatedAlertsLabel = "تنبيهات محاكاة"
     override val importantLabel = "مهمة"

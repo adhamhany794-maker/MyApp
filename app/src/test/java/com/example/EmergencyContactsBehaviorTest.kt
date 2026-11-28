@@ -1,21 +1,30 @@
 package com.example
 
+import android.Manifest
+import android.app.Application
+import android.app.Notification
 import android.app.NotificationManager
+import android.app.Person
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Bundle
 import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.automation.EmergencyBypassController
+import com.example.automation.EmergencyNotificationExtractor
 import com.example.automation.EmergencyPhoneNumberUtils
+import com.example.automation.InMemoryEmergencyBypassBackupStore
 import com.example.automation.InMemoryRoutineStateBackupStore
 import com.example.automation.NoOpRoutineAlarmScheduler
 import com.example.automation.PhoneContactPickerResolver
 import com.example.automation.RoutinePhoneController
+import com.example.automation.SharedPreferencesEmergencyBypassBackupStore
 import com.example.data.PreferencesManager
 import com.example.data.local.AppDatabase
 import com.example.models.ActionType
@@ -40,6 +49,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -306,11 +316,12 @@ class EmergencyContactsBehaviorTest {
                 )
                 viewModel.saveRoutine(sleepRoutine, startImmediately = true)
                 awaitMainLooper {
-                    gateway.ringerMode == SoundMode.SILENT &&
+                    gateway.ringerMode == SoundMode.SOUND &&
                         gateway.interruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY
                 }
 
                 // OS DND mechanism MUST have enabled starred/priority contacts even without routine exceptions
+                assertEquals(SoundMode.SOUND, gateway.ringerMode)
                 assertTrue("Expected OS DND to allow priority/starred contacts", gateway.starredAllowed)
 
                 // Case 1: OS mechanism handles it when ringer is SOUND, starred in OS, and DND priority is allowed
@@ -400,5 +411,220 @@ class EmergencyContactsBehaviorTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test
+    fun `adding emergency contact stars it in phone contacts and removing or downgrading unstars it`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val app = context.applicationContext as Application
+        val shadowApp = Shadows.shadowOf(app)
+        shadowApp.grantPermissions(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS)
+
+        val starredUpdates = mutableListOf<Pair<String, Int>>()
+        val provider = object : android.content.ContentProvider() {
+            override fun onCreate(): Boolean = true
+            override fun query(
+                uri: Uri,
+                projection: Array<out String>?,
+                selection: String?,
+                selectionArgs: Array<out String>?,
+                sortOrder: String?
+            ): android.database.Cursor {
+                return MatrixCursor(arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)).apply {
+                    addRow(arrayOf<Any>("77"))
+                }
+            }
+
+            override fun getType(uri: Uri): String? = null
+            override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+            override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+            override fun update(
+                uri: Uri,
+                values: ContentValues?,
+                selection: String?,
+                selectionArgs: Array<out String>?
+            ): Int {
+                val starred = values?.getAsInteger(ContactsContract.Contacts.STARRED)
+                val targetId = selectionArgs?.firstOrNull() ?: "unknown"
+                if (starred != null) {
+                    starredUpdates.add(targetId to starred)
+                    return 1
+                }
+                return 0
+            }
+        }
+        org.robolectric.shadows.ShadowContentResolver.registerProviderInternal("com.android.contacts", provider)
+
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val prefs = PreferencesManager(context)
+        try {
+            prefs.setLanguage(AppLanguage.ARABIC)
+            val repository = SmartCompanionRepository(db, prefs)
+            val viewModel = SmartCompanionViewModel(
+                repository = repository,
+                phoneControlManager = PhoneControlManager(FakePhoneGateway()),
+                routineBackupStore = InMemoryRoutineStateBackupStore(),
+                alarmScheduler = NoOpRoutineAlarmScheduler(),
+                onStarEmergencyContact = { contact, starred ->
+                    PhoneContactPickerResolver.setContactStarred(context, contact, starred)
+                }
+            )
+            val job = launch(Dispatchers.Unconfined) { viewModel.uiState.collect {} }
+            try {
+                awaitMainLooper { viewModel.uiState.value.isReady && viewModel.uiState.value.preferences.language == AppLanguage.ARABIC }
+
+                // 1. Add emergency contact with systemContactId -> stars contact in system Contacts (STARRED = 1)
+                val added = viewModel.savePickedEmergencyContact(
+                    name = "خالي أحمد",
+                    phoneNumber = "01022334455",
+                    systemContactId = "77"
+                )
+                assertTrue(added is SaveContactResult.Saved)
+                val savedContact = (added as SaveContactResult.Saved).contact
+                assertEquals(listOf("77" to 1), starredUpdates)
+
+                // 2. Downgrade from EMERGENCY -> NORMAL un-stars contact (STARRED = 0)
+                val downgraded = viewModel.saveContactChecked(savedContact.copy(priorityLevel = ContactPriority.NORMAL))
+                assertTrue(downgraded is SaveContactResult.Saved)
+                assertEquals(listOf("77" to 1, "77" to 0), starredUpdates)
+
+                // 3. Re-promote to EMERGENCY stars again, then deleteContact un-stars (STARRED = 0)
+                val repromoted = viewModel.saveContactChecked(savedContact.copy(priorityLevel = ContactPriority.EMERGENCY))
+                assertTrue(repromoted is SaveContactResult.Saved)
+                viewModel.deleteContact((repromoted as SaveContactResult.Saved).contact)
+                awaitMainLooper { repository.getAllContactsOnce().none { it.id == savedContact.id } }
+                assertEquals(listOf("77" to 1, "77" to 0, "77" to 1, "77" to 0), starredUpdates)
+
+                // 4. Denied WRITE_CONTACTS still allows manual entry inside app
+                shadowApp.denyPermissions(Manifest.permission.WRITE_CONTACTS)
+                val manualWithoutPerm = viewModel.savePickedEmergencyContact(
+                    name = "جهة يدوية",
+                    phoneNumber = "01234567890"
+                )
+                assertTrue(manualWithoutPerm is SaveContactResult.Saved)
+                assertTrue(repository.getAllContactsOnce().any { it.name == "جهة يدوية" })
+            } finally {
+                job.cancel()
+                prefs.resetDefaults(preserveOnboarding = false)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `backup emergency bypass saves phone state before bypass and restores it afterwards`() {
+        val gateway = FakePhoneGateway(
+            granted = true,
+            ringerMode = SoundMode.SOUND,
+            interruptionFilter = NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+            starredAllowed = true
+        )
+        val manager = PhoneControlManager(gateway)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val backupStore = SharedPreferencesEmergencyBypassBackupStore(context)
+        backupStore.clear()
+
+        val controller = EmergencyBypassController(
+            phoneControlManager = manager,
+            backupStore = backupStore
+        )
+        val emergencyContacts = listOf(
+            com.example.models.PriorityContact(
+                id = "c_em",
+                name = "د. طارق",
+                initials = "ط",
+                relationship = "طبيب",
+                priorityLevel = ContactPriority.EMERGENCY,
+                allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
+                isEnabled = true,
+                allowRepeatCallers = true,
+                phoneNumber = "01055566677"
+            )
+        )
+
+        val decision = controller.handleIncomingCommunication(
+            senderName = null,
+            senderPhoneNumber = "01055566677",
+            interruptionType = InterruptionType.MESSAGE,
+            contacts = emergencyContacts,
+            isStarredInOs = false,
+            isArabic = true,
+            notificationKey = "notif_key_1"
+        )
+
+        assertTrue(decision.allowed)
+        assertTrue(decision.bypassAppliedOnDevice)
+        // Phone switched to SOUND + ALL during bypass
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, gateway.interruptionFilter)
+        // Backup captured prior PRIORITY filter and notification key
+        val backup = backupStore.getBackup()
+        assertNotNull(backup)
+        assertEquals(SoundMode.SOUND, backup!!.previousRingerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, backup.previousInterruptionFilter)
+        assertEquals("notif_key_1", backup.notificationKey)
+
+        // Removing a different notification key must not prematurely restore
+        assertFalse(controller.restoreAfterBypass("other_key"))
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, gateway.interruptionFilter)
+
+        // Removing the matching notification restores the saved state and clears backup
+        assertTrue(controller.restoreAfterBypass("notif_key_1"))
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
+        assertNull(backupStore.getBackup())
+    }
+
+    @Test
+    fun `matching requires phone number or exact name and never uses notification text or title`() {
+        val emergencyContact = com.example.models.PriorityContact(
+            id = "c_strict",
+            name = "د. كريم",
+            initials = "دك",
+            relationship = "طبيب",
+            priorityLevel = ContactPriority.EMERGENCY,
+            allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
+            isEnabled = true,
+            allowRepeatCallers = true,
+            phoneNumber = "01112223334"
+        )
+        val list = listOf(emergencyContact)
+
+        // Partial substring name must NOT match
+        assertNull(EmergencyPhoneNumberUtils.findMatchingEmergencyContact("كريم", null, list))
+        assertNull(EmergencyPhoneNumberUtils.findMatchingEmergencyContact("د. كريم منصور", null, list))
+
+        // Exact trimmed name and matching phone number DO match
+        assertEquals(emergencyContact.id, EmergencyPhoneNumberUtils.findMatchingEmergencyContact("  د. كريم  ", null, list)?.id)
+        assertEquals(emergencyContact.id, EmergencyPhoneNumberUtils.findMatchingEmergencyContact(null, "+20 111 222 3334", list)?.id)
+
+        // Notification with EXTRA_TITLE and EXTRA_TEXT containing emergency name/phone, but NO structured Person/URI -> NEVER extracted
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val textOnlyNotification = Notification.Builder(context, "test")
+            .setContentTitle("د. كريم")
+            .setContentText("اتصل بي فوراً 01112223334")
+            .setSmallIcon(android.R.drawable.sym_def_app_icon)
+            .build()
+        val extractedFromTextOnly = EmergencyNotificationExtractor.extractSenderIdentity(textOnlyNotification)
+        assertNull(extractedFromTextOnly.senderName)
+        assertNull(extractedFromTextOnly.senderPhoneNumber)
+
+        // Notification with structured Person (EXTRA_PEOPLE_LIST / EXTRA_MESSAGING_PERSON) extracts sender cleanly
+        val person = Person.Builder()
+            .setName("د. كريم")
+            .setUri("tel:+201112223334")
+            .build()
+        val structuredNotification = Notification.Builder(context, "test")
+            .setContentTitle("Spam title ignored")
+            .setContentText("Message body ignored")
+            .setSmallIcon(android.R.drawable.sym_def_app_icon)
+            .addPerson(person)
+            .build()
+        val extractedFromPerson = EmergencyNotificationExtractor.extractSenderIdentity(structuredNotification)
+        assertEquals("د. كريم", extractedFromPerson.senderName)
+        assertEquals("+201112223334", extractedFromPerson.senderPhoneNumber)
     }
 }

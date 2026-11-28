@@ -213,8 +213,10 @@ class RoutinePhoneController(
         hasEmergencyContacts: Boolean = true
     ): RoutineControlOutcome {
         val targetSoundMode = resolveTargetSoundMode(routine, profiles)
-        val wantsDnd = routine.enableDoNotDisturb
-        if (targetSoundMode == null && !wantsDnd) {
+        val isMutingRoutine = targetSoundMode == SoundMode.SILENT ||
+            targetSoundMode == SoundMode.VIBRATE ||
+            routine.enableDoNotDisturb
+        if (targetSoundMode == null && !routine.enableDoNotDisturb) {
             return RoutineControlOutcome(
                 success = false,
                 permissionRequired = false,
@@ -230,10 +232,6 @@ class RoutinePhoneController(
                     note = "No phone action selected"
                 )
             )
-        }
-
-        val allowStarred = hasEmergencyContacts || routine.exceptions.any {
-            it.type == ExceptionType.EMERGENCY_CONTACTS || it.type == ExceptionType.PRIORITY_CONTACTS
         }
 
         val stateBefore = phoneControlManager.refreshPermissionAndDeviceState()
@@ -278,18 +276,19 @@ class RoutinePhoneController(
         var dndOk = true
         var permRequiredDuringApply = false
 
-        if (targetSoundMode != null) {
-            val res = phoneControlManager.applyRingerMode(targetSoundMode)
-            ringerOk = res.success
-            if (res.permissionRequired) permRequiredDuringApply = true
-            if (res.success) {
-                appliedRinger = targetSoundMode
-            }
+        // Keep ringer on SOUND (NORMAL) so OS DND starred contacts ring through,
+        // and mute non-priority calls/notifications via DND INTERRUPTION_FILTER_PRIORITY.
+        val ringerRes = phoneControlManager.applyRingerMode(SoundMode.SOUND)
+        ringerOk = ringerRes.success
+        if (ringerRes.permissionRequired) permRequiredDuringApply = true
+        if (ringerRes.success) {
+            appliedRinger = SoundMode.SOUND
         }
-        if (wantsDnd) {
+
+        if (isMutingRoutine) {
             val dndRes = phoneControlManager.setDoNotDisturbEnabled(
                 enabled = true,
-                allowStarredContacts = allowStarred
+                allowStarredContacts = true
             )
             dndOk = dndRes.success
             if (dndRes.permissionRequired) permRequiredDuringApply = true
@@ -331,8 +330,8 @@ class RoutinePhoneController(
 
         val afterState = phoneControlManager.refreshPermissionAndDeviceState()
         val note = buildAppliedSummary(
-            ringerMode = appliedRinger ?: targetSoundMode,
-            dndEnabled = appliedDnd ?: (if (wantsDnd) true else null),
+            ringerMode = appliedRinger ?: SoundMode.SOUND,
+            dndEnabled = appliedDnd ?: (if (isMutingRoutine) true else null),
             isArabic = isArabic
         )
 

@@ -49,7 +49,8 @@ data class ContactEntity(
     val allowedInterruptionsJson: String,
     val isEnabled: Boolean,
     val allowRepeatCallers: Boolean,
-    val phoneNumber: String = ""
+    val phoneNumber: String = "",
+    val systemContactId: String = ""
 )
 
 @Entity(tableName = "activity_events")

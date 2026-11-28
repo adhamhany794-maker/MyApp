@@ -339,7 +339,7 @@ class RoutineSchedulingAndRestoreTest {
         assertTrue(startOutcome.success)
         assertFalse(startOutcome.permissionRequired)
         assertEquals(RoutineLogEventType.STARTED, startOutcome.logEntry.eventType)
-        assertEquals(SoundMode.SILENT, gateway.ringerMode)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
         assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
         assertTrue(gateway.starredAllowed)
 
@@ -383,16 +383,19 @@ class RoutineSchedulingAndRestoreTest {
         val r2 = buildRoutine(id = "r2", name = "الثاني", soundMode = SoundMode.SILENT, enableDoNotDisturb = true)
 
         controller.applyRoutineStart(r1, emptyList(), isArabic = true, timestampMillis = 1000L)
-        assertEquals(SoundMode.VIBRATE, gateway.ringerMode)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
+        assertTrue(gateway.starredAllowed)
 
         controller.applyRoutineStart(r2, emptyList(), isArabic = true, timestampMillis = 2000L)
-        assertEquals(SoundMode.SILENT, gateway.ringerMode)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
         assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
 
-        // Ending r1 while r2 is still active must NOT restore SOUND yet
+        // Ending r1 while r2 is still active must NOT restore ALL filter yet
         val end1 = controller.applyRoutineEnd("r1", "الأول", isArabic = true, timestampMillis = 3000L)
         assertTrue(end1.success)
-        assertEquals(SoundMode.SILENT, gateway.ringerMode)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
         assertNotNull(backupStore.getBackup())
 
         // Ending r2 restores original pre-r1 SOUND + ALL filter
@@ -544,8 +547,9 @@ class RoutineSchedulingAndRestoreTest {
                     wait++
                 }
                 assertTrue(logs.any { it.routineId == "r_vm_now" && it.eventType == RoutineLogEventType.STARTED })
-                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                assertEquals(SoundMode.SOUND, fakeGateway.ringerMode)
                 assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
+                assertTrue(fakeGateway.starredAllowed)
                 assertTrue(fakeScheduler.immediateEndAlarms.any { it.first == "r_vm_now" })
 
                 // Exact alarm denied -> sets exactAlarmDeniedNotice
@@ -628,7 +632,7 @@ class RoutineSchedulingAndRestoreTest {
             nowMillis = tStart
         )
 
-        assertEquals(AudioManager.RINGER_MODE_VIBRATE, am.ringerMode)
+        assertEquals(AudioManager.RINGER_MODE_NORMAL, am.ringerMode)
         assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, nm.currentInterruptionFilter)
 
         val tEnd = utcCalendar(2026, Calendar.NOVEMBER, 27, 15, 0).timeInMillis
@@ -826,7 +830,7 @@ class RoutineSchedulingAndRestoreTest {
 
     @Test
     fun `disable routine while active restores previous phone state`() {
-        val gateway = FakePhoneControlGateway(granted = true, ringerMode = SoundMode.SOUND, interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL)
+        val gateway = FakePhoneControlGateway(granted = true, ringerMode = SoundMode.VIBRATE, interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL)
         val manager = PhoneControlManager(gateway)
         val backupStore = InMemoryRoutineStateBackupStore()
         val controller = RoutinePhoneController(manager, backupStore)
@@ -834,13 +838,15 @@ class RoutineSchedulingAndRestoreTest {
         val routine = buildRoutine(id = "r_active_disable", soundMode = SoundMode.VIBRATE, enableDoNotDisturb = true)
         val startOutcome = controller.applyRoutineStart(routine, emptyList(), isArabic = true, timestampMillis = 1000L)
         assertTrue(startOutcome.success)
-        assertEquals(SoundMode.VIBRATE, gateway.ringerMode)
+        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, gateway.interruptionFilter)
+        assertTrue(gateway.starredAllowed)
         assertNotNull(backupStore.getBackup())
 
-        // Disabling active routine triggers applyRoutineEnd
+        // Disabling active routine triggers applyRoutineEnd and restores VIBRATE + ALL
         val endOutcome = controller.applyRoutineEnd(routine.id, routine.name, isArabic = true, timestampMillis = 2000L)
         assertTrue(endOutcome.success)
-        assertEquals(SoundMode.SOUND, gateway.ringerMode)
+        assertEquals(SoundMode.VIBRATE, gateway.ringerMode)
         assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, gateway.interruptionFilter)
         assertNull(backupStore.getBackup())
     }
@@ -1011,8 +1017,12 @@ class RoutineSchedulingAndRestoreTest {
                     endTime = "23:55"
                 )
                 viewModel.saveRoutine(activeRoutine, startImmediately = true)
-                awaitMainLooper { fakeGateway.ringerMode == SoundMode.SILENT }
-                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.SOUND &&
+                        fakeGateway.interruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                }
+                assertEquals(SoundMode.SOUND, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
 
                 viewModel.toggleRoutineEnabled(activeRoutine)
                 awaitMainLooper {
@@ -1027,8 +1037,12 @@ class RoutineSchedulingAndRestoreTest {
                 // 4. Pause automation while routine active -> restores previous state & emits Arabic toast
                 val pausedRoutine = activeRoutine.copy(id = "r_pause_restore", isEnabled = true)
                 viewModel.saveRoutine(pausedRoutine, startImmediately = true)
-                awaitMainLooper { fakeGateway.ringerMode == SoundMode.SILENT }
-                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                awaitMainLooper {
+                    fakeGateway.ringerMode == SoundMode.SOUND &&
+                        fakeGateway.interruptionFilter == NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                }
+                assertEquals(SoundMode.SOUND, fakeGateway.ringerMode)
+                assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
 
                 viewModel.toggleGlobalAutomationPause()
                 awaitMainLooper {
@@ -1104,8 +1118,9 @@ class RoutineSchedulingAndRestoreTest {
                 val saved = repository.getRoutineById("r_assistant_now")
                 assertNotNull(saved)
                 assertTrue(saved!!.enableDoNotDisturb)
-                assertEquals(SoundMode.SILENT, fakeGateway.ringerMode)
+                assertEquals(SoundMode.SOUND, fakeGateway.ringerMode)
                 assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, fakeGateway.interruptionFilter)
+                assertTrue(fakeGateway.starredAllowed)
                 assertTrue(fakeScheduler.immediateEndAlarms.any { it.first == "r_assistant_now" })
                 val logs = repository.routineLogs.first()
                 assertTrue(logs.any { it.routineId == "r_assistant_now" && it.eventType == RoutineLogEventType.STARTED })
