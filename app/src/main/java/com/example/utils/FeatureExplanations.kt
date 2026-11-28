@@ -73,9 +73,9 @@ object FeatureExplanations {
             )
             FeatureHelpTopic.CONTACTS -> FeatureExplanation(
                 title = "جهات الطوارئ",
-                whatItIs = "قائمة المتصلين المختارين الذين لا يتأثرون بأي روتين أو وضع صامت إطلاقاً.",
+                whatItIs = "قائمة المتصلين المختارين للطوارئ الذين لا يتأثرون بأي روتين أو وضع صامت إطلاقاً؛ وأي شخص آخر يُعامل كمتصل عادي تلقائياً.",
                 problemSolved = "تضمن وصول المكالمات العاجلة من العائلة أو الفريق حتى أثناء الدراسة أو النوم.",
-                howToUse = "أضف جهات الطوارئ أو عدّل مستواها أو اختبر مكالمة/رسالة محاكاة.",
+                howToUse = "أضف جهات الطوارئ من الهاتف أو يدوياً، أو فعّل ميزة المكالمات المتكررة من الإعدادات.",
                 whatHappens = "تتجاوز جهات الطوارئ أي روتين وأي وضع كتم دائماً."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(
@@ -181,9 +181,9 @@ object FeatureExplanations {
             )
             FeatureHelpTopic.CONTACTS -> FeatureExplanation(
                 title = "Emergency Contacts",
-                whatItIs = "Chosen callers who are never affected by any routine, even in Silent mode.",
+                whatItIs = "Chosen emergency callers who are never affected by any routine, even in Silent mode. Anyone else is treated as normal automatically.",
                 problemSolved = "Prevents missing urgent calls from family or teammates while routines silence distractions.",
-                howToUse = "Add emergency callers, review contact tiers, or expand the interruption tester.",
+                howToUse = "Add emergency callers from your phonebook or manually, or configure Repeat Calls in Settings.",
                 whatHappens = "Emergency contacts always get through every routine and quiet profile."
             )
             FeatureHelpTopic.INSIGHTS -> FeatureExplanation(

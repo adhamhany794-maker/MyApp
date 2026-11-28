@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.models.DayFilter
 import com.example.models.InterruptionType
+import com.example.models.PriorityContact
 import com.example.models.SimulatedActivity
 import com.example.models.SimulatedLocation
 import com.example.simulation.SimulationEvent
@@ -75,7 +76,7 @@ fun SimulationEngineScreen(
     var simDay by remember { mutableStateOf(state.preferences.simulatedContext.simulatedDay) }
     var simLocation by remember { mutableStateOf(state.preferences.simulatedContext.location) }
     var simActivity by remember { mutableStateOf(state.preferences.simulatedContext.activity) }
-    var selectedContact by remember(state.contacts) { mutableStateOf(state.contacts.firstOrNull()) }
+    var selectedContact by remember(state.contacts) { mutableStateOf<PriorityContact?>(state.contacts.firstOrNull()) }
     var showHelp by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -234,11 +235,17 @@ fun SimulationEngineScreen(
                 Text(strings.simInterruptionTitle, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = selectedContact == null,
+                        onClick = { selectedContact = null },
+                        label = { Text(strings.normalCallerAutomaticLabel) },
+                        modifier = Modifier.testTag("sim_normal_caller_chip")
+                    )
                     state.contacts.forEach { contact ->
                         FilterChip(
                             selected = selectedContact?.id == contact.id,
                             onClick = { selectedContact = contact },
-                            label = { Text("${contact.name} (${strings.contactPriorityLabel(contact.priorityLevel)})") }
+                            label = { Text("${contact.name} (${strings.emergencyTierTitle})") }
                         )
                     }
                 }
@@ -250,9 +257,7 @@ fun SimulationEngineScreen(
                 ) {
                     Button(
                         onClick = {
-                            selectedContact?.let {
-                                viewModel.simulateIncomingInterruption(it, InterruptionType.CALL, false)
-                            }
+                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.CALL, false)
                         },
                         modifier = Modifier.testTag("sim_incoming_call_btn")
                     ) {
@@ -262,9 +267,7 @@ fun SimulationEngineScreen(
                     }
                     OutlinedButton(
                         onClick = {
-                            selectedContact?.let {
-                                viewModel.simulateIncomingInterruption(it, InterruptionType.MESSAGE, false)
-                            }
+                            viewModel.simulateIncomingInterruption(selectedContact, InterruptionType.MESSAGE, false)
                         },
                         modifier = Modifier.testTag("sim_incoming_msg_btn")
                     ) {

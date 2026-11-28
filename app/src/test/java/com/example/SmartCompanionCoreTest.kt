@@ -111,14 +111,14 @@ class SmartCompanionCoreTest {
     @Test
     fun `study profile blocks normal caller and allows emergency caller`() {
         val studyProfile = profiles.first { it.id == "profile_study" }
-        val normalContact = contacts.first { it.priorityLevel == ContactPriority.NORMAL }
         val emergencyContact = contacts.first { it.priorityLevel == ContactPriority.EMERGENCY }
 
         val normalDecision = engine.simulateIncomingInterruption(
-            contact = normalContact,
+            contact = null,
             interruptionType = InterruptionType.CALL,
             isRepeatCaller = false,
-            activeProfile = studyProfile
+            activeProfile = studyProfile,
+            callerName = "Omar Tariq"
         )
         val emergencyDecision = engine.simulateIncomingInterruption(
             contact = emergencyContact,

@@ -33,6 +33,9 @@ data class AppPreferences(
     val defaultProfileId: String = "profile_personal",
     val conflictPolicy: ConflictResolutionPolicy = ConflictResolutionPolicy.ASK_USER,
     val dailyFocusGoalMinutes: Int = 120,
+    val repeatCallsEnabled: Boolean = false,
+    val repeatCallCount: Int = 2,
+    val repeatCallWindowMinutes: Int = 15,
     val previousSnapshot: PhoneSnapshot = PhoneSnapshot(
         activeProfileId = "profile_personal",
         soundMode = SoundMode.SOUND,
@@ -54,6 +57,9 @@ class PreferencesManager(private val context: Context) {
         val DEFAULT_PROFILE_ID = stringPreferencesKey("default_profile_id")
         val CONFLICT_POLICY = stringPreferencesKey("conflict_policy")
         val DAILY_FOCUS_GOAL = intPreferencesKey("daily_focus_goal_minutes")
+        val REPEAT_CALLS_ENABLED = booleanPreferencesKey("repeat_calls_enabled")
+        val REPEAT_CALL_COUNT = intPreferencesKey("repeat_call_count")
+        val REPEAT_CALL_WINDOW_MINUTES = intPreferencesKey("repeat_call_window_minutes")
 
         val PREV_PROFILE_ID = stringPreferencesKey("prev_profile_id")
         val PREV_SOUND_MODE = stringPreferencesKey("prev_sound_mode")
@@ -81,6 +87,9 @@ class PreferencesManager(private val context: Context) {
             defaultProfileId = prefs[Keys.DEFAULT_PROFILE_ID] ?: "profile_personal",
             conflictPolicy = enumOrDefault(prefs[Keys.CONFLICT_POLICY], ConflictResolutionPolicy.ASK_USER),
             dailyFocusGoalMinutes = prefs[Keys.DAILY_FOCUS_GOAL] ?: 120,
+            repeatCallsEnabled = prefs[Keys.REPEAT_CALLS_ENABLED] ?: false,
+            repeatCallCount = (prefs[Keys.REPEAT_CALL_COUNT] ?: 2).coerceIn(2, 20),
+            repeatCallWindowMinutes = (prefs[Keys.REPEAT_CALL_WINDOW_MINUTES] ?: 15).coerceIn(1, 240),
             previousSnapshot = PhoneSnapshot(
                 activeProfileId = prefs[Keys.PREV_PROFILE_ID] ?: "profile_personal",
                 soundMode = enumOrDefault(prefs[Keys.PREV_SOUND_MODE], SoundMode.SOUND),
@@ -109,6 +118,18 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setLanguage(language: AppLanguage) {
         context.dataStore.edit { it[Keys.LANGUAGE] = language.name }
+    }
+
+    suspend fun setRepeatCallsConfig(
+        enabled: Boolean,
+        requiredCalls: Int,
+        windowMinutes: Int
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.REPEAT_CALLS_ENABLED] = enabled
+            prefs[Keys.REPEAT_CALL_COUNT] = requiredCalls.coerceIn(2, 20)
+            prefs[Keys.REPEAT_CALL_WINDOW_MINUTES] = windowMinutes.coerceIn(1, 240)
+        }
     }
 
     suspend fun savePhoneState(

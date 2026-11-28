@@ -98,6 +98,16 @@ data class PriorityContact(
     val systemContactId: String = ""
 )
 
+data class RepeatCallerRule(
+    val id: String,
+    val name: String,
+    val phoneNumber: String,
+    val requiredCalls: Int = 2,
+    val windowMinutes: Int = 15,
+    val isEnabled: Boolean = true,
+    val systemContactId: String = ""
+)
+
 data class EmergencyBypassOutcome(
     val matchedContact: PriorityContact?,
     val isEmergency: Boolean,
@@ -188,7 +198,7 @@ data class SimulationTrace(
 
 data class InterruptionDecision(
     val contactName: String,
-    val priorityLevel: ContactPriority,
+    val priorityLevel: ContactPriority?,
     val interruptionType: InterruptionType,
     val isAllowed: Boolean,
     val activeProfileName: String,

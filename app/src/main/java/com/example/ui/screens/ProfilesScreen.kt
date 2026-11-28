@@ -38,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -365,7 +364,6 @@ private fun ProfileEditorDialog(
         mutableStateOf(if (isNew) initial.description else strings.localizedProfileDescription(initial))
     }
     var soundMode by remember { mutableStateOf(initial.soundMode) }
-    var allowHighPriority by remember { mutableStateOf(initial.allowHighPriorityContacts) }
     var selectedCategories by remember { mutableStateOf(initial.allowedCategories.toSet()) }
     var focusMinutes by remember { mutableStateOf(initial.defaultFocusMinutes.toString()) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -441,14 +439,6 @@ private fun ProfileEditorDialog(
                         )
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(strings.allowHighPriorityContacts, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Switch(checked = allowHighPriority, onCheckedChange = { allowHighPriority = it })
-                }
                 Text(strings.allowedCategoriesLabel, style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     NotificationCategory.entries.forEach { cat ->
@@ -479,17 +469,13 @@ private fun ProfileEditorDialog(
                         return@Button
                     }
                     val mins = focusMinutes.toIntOrNull()?.coerceIn(5, 480) ?: 30
-                    val behavior = if (allowHighPriority) {
-                        "Emergency contacts always allowed; High-Priority contacts allowed"
-                    } else {
-                        "Emergency contacts always allowed"
-                    }
+                    val behavior = "Emergency contacts always allowed"
                     onSave(
                         initial.copy(
                             name = name.trim(),
                             description = description.trim().ifEmpty { "Custom smart phone profile." },
                             soundMode = soundMode,
-                            allowHighPriorityContacts = allowHighPriority,
+                            allowHighPriorityContacts = false,
                             priorityContactBehavior = behavior,
                             allowedCategories = selectedCategories.toList(),
                             defaultFocusMinutes = mins

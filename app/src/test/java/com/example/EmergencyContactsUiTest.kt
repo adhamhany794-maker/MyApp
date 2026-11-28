@@ -106,6 +106,8 @@ class EmergencyContactsUiTest {
 
             composeRule.onNodeWithTag("choose_phone_contact_btn").assertIsDisplayed()
             composeRule.onNodeWithTag("add_contact_manual_btn").assertIsDisplayed()
+            composeRule.onNodeWithText("أولوية عالية").assertDoesNotExist()
+            composeRule.onNodeWithText("جهات اتصال عادية").assertDoesNotExist()
 
             // Scroll to the emergency contact card and verify phone number and "هيوصلك دايما" badge
             composeRule.onNodeWithTag("contacts_list")
@@ -121,10 +123,12 @@ class EmergencyContactsUiTest {
             composeRule.onNodeWithTag("read_contacts_rationale_dialog").assertIsDisplayed()
             composeRule.onNodeWithTag("confirm_read_contacts_permission_btn").assertIsDisplayed()
 
-            // Dismiss to manual entry keeps manual entry working
+            // Dismiss to manual entry keeps manual entry working without priority level picker
             composeRule.onNodeWithTag("fallback_manual_contact_btn").performClick()
             composeRule.onNodeWithTag("contact_name_input").performScrollTo().assertIsDisplayed()
             composeRule.onNodeWithTag("contact_phone_input").performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithText("مستوى الأولوية").assertDoesNotExist()
+            composeRule.onNodeWithText("عادي").assertDoesNotExist()
 
             // Entering a manual emergency contact without WRITE_CONTACTS shows the Arabic star rationale dialog first
             composeRule.onNodeWithTag("contact_name_input").performTextInput("بابا")

@@ -3,12 +3,12 @@ package com.example.simulation
 import com.example.models.ActionType
 import com.example.models.ConditionType
 import com.example.models.ConflictResolutionPolicy
-import com.example.models.ContactPriority
 import com.example.models.DayFilter
 import com.example.models.ExceptionType
 import com.example.models.InterruptionDecision
 import com.example.models.InterruptionType
 import com.example.models.PriorityContact
+import com.example.models.RepeatCallerRule
 import com.example.models.RuleAction
 import com.example.models.SimulationContextState
 import com.example.models.SimulationTrace
@@ -265,48 +265,59 @@ class AutomationSimulationEngine {
     }
 
     fun simulateIncomingInterruption(
-        contact: PriorityContact,
+        contact: PriorityContact?,
         interruptionType: InterruptionType,
         isRepeatCaller: Boolean,
-        activeProfile: SmartProfile
+        activeProfile: SmartProfile,
+        callerName: String = contact?.name ?: "Normal Caller",
+        globalRepeatCallsEnabled: Boolean = false,
+        globalRepeatCount: Int = 2,
+        globalRepeatWindowMinutes: Int = 15,
+        perPersonRule: RepeatCallerRule? = null,
+        incomingCallCountInWindow: Int = if (isRepeatCaller) globalRepeatCount else 1
     ): InterruptionDecision {
         val isSoundNormal = activeProfile.soundMode == SoundMode.SOUND
-        val contactActive = contact.isEnabled
+        val displayName = contact?.name ?: callerName
+        val effectiveRepeatEnabled = when {
+            perPersonRule != null && perPersonRule.isEnabled -> true
+            globalRepeatCallsEnabled -> true
+            else -> false
+        }
+        val effectiveRequiredCalls = perPersonRule?.takeIf { it.isEnabled }?.requiredCalls ?: globalRepeatCount
+        val effectiveWindowMinutes = perPersonRule?.takeIf { it.isEnabled }?.windowMinutes ?: globalRepeatWindowMinutes
+        val repeatThresholdMet = interruptionType == InterruptionType.CALL &&
+            effectiveRepeatEnabled &&
+            (isRepeatCaller || incomingCallCountInWindow >= effectiveRequiredCalls)
 
         val isAllowed: Boolean
         val reason: String
 
         when {
-            contact.priorityLevel == ContactPriority.EMERGENCY -> {
+            contact != null && contact.priorityLevel == com.example.models.ContactPriority.EMERGENCY -> {
                 isAllowed = true
-                reason = "Emergency contacts always get through — ${interruptionType.displayName} from ${contact.name} bypassed ${activeProfile.name} (${activeProfile.soundMode.displayName})."
+                reason = "Emergency contacts always get through — ${interruptionType.displayName} from $displayName bypassed ${activeProfile.name} (${activeProfile.soundMode.displayName})."
             }
             isSoundNormal -> {
                 isAllowed = true
-                reason = "${activeProfile.name} uses Sound mode, so interruptions from ${contact.name} are allowed."
+                reason = "${activeProfile.name} uses Sound mode, so interruptions from $displayName are allowed."
             }
-            isRepeatCaller && contact.allowRepeatCallers -> {
+            repeatThresholdMet -> {
                 isAllowed = true
-                reason = "Repeat-caller emergency safeguard allowed ${contact.name} through ${activeProfile.name} (${activeProfile.soundMode.displayName})."
-            }
-            contactActive && contact.priorityLevel == ContactPriority.HIGH_PRIORITY && activeProfile.allowHighPriorityContacts -> {
-                if (contact.allowedInterruptions.contains(interruptionType)) {
-                    isAllowed = true
-                    reason = "${activeProfile.name} permits High-Priority ${interruptionType.displayName} from ${contact.name}."
+                reason = if (perPersonRule != null && perPersonRule.isEnabled) {
+                    "Per-person repeat caller rule allowed $displayName ($effectiveRequiredCalls calls within $effectiveWindowMinutes min) through ${activeProfile.name} (${activeProfile.soundMode.displayName})."
                 } else {
-                    isAllowed = false
-                    reason = "${contact.name} does not have ${interruptionType.displayName} enabled as an exception."
+                    "Repeat-caller rule allowed $displayName ($effectiveRequiredCalls calls within $effectiveWindowMinutes min) through ${activeProfile.name} (${activeProfile.soundMode.displayName})."
                 }
             }
             else -> {
                 isAllowed = false
-                reason = "Blocked by ${activeProfile.name} (${activeProfile.soundMode.displayName}). ${contact.name} (${contact.priorityLevel.displayName}) does not bypass this profile's filter."
+                reason = "Blocked by ${activeProfile.name} (${activeProfile.soundMode.displayName}). $displayName is treated as a normal caller and does not bypass this profile."
             }
         }
 
         return InterruptionDecision(
-            contactName = contact.name,
-            priorityLevel = contact.priorityLevel,
+            contactName = displayName,
+            priorityLevel = contact?.priorityLevel,
             interruptionType = interruptionType,
             isAllowed = isAllowed,
             activeProfileName = activeProfile.name,

@@ -104,3 +104,14 @@ data class RoutineLogEntity(
     val note: String
 )
 
+@Entity(tableName = "repeat_caller_rules")
+data class RepeatCallerEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val phoneNumber: String,
+    val requiredCalls: Int,
+    val windowMinutes: Int,
+    val isEnabled: Boolean,
+    val systemContactId: String = ""
+)
+

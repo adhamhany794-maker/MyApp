@@ -36,9 +36,7 @@ enum class NotificationCategory(val displayName: String) {
 }
 
 enum class ContactPriority(val displayName: String, val rank: Int) {
-    EMERGENCY("Emergency", 3),
-    HIGH_PRIORITY("High Priority", 2),
-    NORMAL("Normal", 1)
+    EMERGENCY("Emergency", 3)
 }
 
 enum class InterruptionType(val displayName: String) {

@@ -414,7 +414,7 @@ class EmergencyContactsBehaviorTest {
     }
 
     @Test
-    fun `adding emergency contact stars it in phone contacts and removing or downgrading unstars it`() = runBlocking {
+    fun `adding emergency contact stars it in phone contacts and deleting it unstars it`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = context.applicationContext as Application
         val shadowApp = Shadows.shadowOf(app)
@@ -485,17 +485,10 @@ class EmergencyContactsBehaviorTest {
                 val savedContact = (added as SaveContactResult.Saved).contact
                 assertEquals(listOf("77" to 1), starredUpdates)
 
-                // 2. Downgrade from EMERGENCY -> NORMAL un-stars contact (STARRED = 0)
-                val downgraded = viewModel.saveContactChecked(savedContact.copy(priorityLevel = ContactPriority.NORMAL))
-                assertTrue(downgraded is SaveContactResult.Saved)
-                assertEquals(listOf("77" to 1, "77" to 0), starredUpdates)
-
-                // 3. Re-promote to EMERGENCY stars again, then deleteContact un-stars (STARRED = 0)
-                val repromoted = viewModel.saveContactChecked(savedContact.copy(priorityLevel = ContactPriority.EMERGENCY))
-                assertTrue(repromoted is SaveContactResult.Saved)
-                viewModel.deleteContact((repromoted as SaveContactResult.Saved).contact)
+                // 2. Deleting emergency contact un-stars contact in system Contacts (STARRED = 0)
+                viewModel.deleteContact(savedContact)
                 awaitMainLooper { repository.getAllContactsOnce().none { it.id == savedContact.id } }
-                assertEquals(listOf("77" to 1, "77" to 0, "77" to 1, "77" to 0), starredUpdates)
+                assertEquals(listOf("77" to 1, "77" to 0), starredUpdates)
 
                 // 4. Denied WRITE_CONTACTS still allows manual entry inside app
                 shadowApp.denyPermissions(Manifest.permission.WRITE_CONTACTS)

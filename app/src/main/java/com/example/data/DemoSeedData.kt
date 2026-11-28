@@ -36,7 +36,7 @@ object DemoSeedData {
             accentColorHex = 0xFF0284C7,
             soundMode = SoundMode.SILENT,
             allowedCategories = listOf(NotificationCategory.EDUCATION, NotificationCategory.SYSTEM),
-            priorityContactBehavior = "Emergency contacts allowed; High-priority messages queued",
+            priorityContactBehavior = "Emergency contacts allowed; anyone else is normal",
             allowHighPriorityContacts = false,
             defaultFocusMinutes = 45,
             isDefault = true,
@@ -50,8 +50,8 @@ object DemoSeedData {
             accentColorHex = 0xFF0F294A,
             soundMode = SoundMode.VIBRATE,
             allowedCategories = listOf(NotificationCategory.WORK, NotificationCategory.COMMUNICATION),
-            priorityContactBehavior = "Emergency & High-Priority contacts allowed for calls",
-            allowHighPriorityContacts = true,
+            priorityContactBehavior = "Emergency contacts allowed; repeat callers configurable",
+            allowHighPriorityContacts = false,
             defaultFocusMinutes = 60,
             isDefault = true,
             isProtected = true
@@ -84,7 +84,7 @@ object DemoSeedData {
                 NotificationCategory.ENTERTAINMENT
             ),
             priorityContactBehavior = "All contacts permitted normally",
-            allowHighPriorityContacts = true,
+            allowHighPriorityContacts = false,
             defaultFocusMinutes = 25,
             isDefault = true,
             isProtected = true
@@ -285,46 +285,6 @@ object DemoSeedData {
             allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.REPEAT_CALLER),
             isEnabled = true,
             allowRepeatCallers = true
-        ),
-        PriorityContact(
-            id = "contact_sarah",
-            name = "Sarah Chen",
-            initials = "SC",
-            relationship = "Project Lead",
-            priorityLevel = ContactPriority.HIGH_PRIORITY,
-            allowedInterruptions = listOf(InterruptionType.CALL, InterruptionType.MESSAGE),
-            isEnabled = true,
-            allowRepeatCallers = false
-        ),
-        PriorityContact(
-            id = "contact_alex",
-            name = "Alex Rivera",
-            initials = "AR",
-            relationship = "Engineering Manager",
-            priorityLevel = ContactPriority.HIGH_PRIORITY,
-            allowedInterruptions = listOf(InterruptionType.CALL),
-            isEnabled = true,
-            allowRepeatCallers = false
-        ),
-        PriorityContact(
-            id = "contact_omar",
-            name = "Omar Tariq",
-            initials = "OT",
-            relationship = "Study Partner",
-            priorityLevel = ContactPriority.NORMAL,
-            allowedInterruptions = listOf(InterruptionType.MESSAGE),
-            isEnabled = true,
-            allowRepeatCallers = false
-        ),
-        PriorityContact(
-            id = "contact_courier",
-            name = "Campus Courier",
-            initials = "CC",
-            relationship = "Delivery",
-            priorityLevel = ContactPriority.NORMAL,
-            allowedInterruptions = emptyList(),
-            isEnabled = false,
-            allowRepeatCallers = false
         )
     )
 
@@ -482,12 +442,12 @@ object DemoSeedData {
             ),
             ActivityEvent(
                 id = "ev_11",
-                title = "High Priority Work Call Allowed",
+                title = "Routine Bypass Tested",
                 timestampMillis = now - 30 * hour,
                 category = EventCategory.CONTACT_EXCEPTION,
                 triggerSource = "Simulated Incoming Call",
-                result = "Allowed call from Sarah Chen",
-                explanation = "Work Profile permits High Priority contacts during business hours.",
+                result = "Allowed call from Dr. Kareem Mansour",
+                explanation = "Emergency contacts always reach you regardless of active routine.",
                 relatedProfileName = "Work"
             ),
             ActivityEvent(
@@ -496,7 +456,7 @@ object DemoSeedData {
                 timestampMillis = now - 36 * hour,
                 category = EventCategory.SYSTEM,
                 triggerSource = "Smart Companion Demo",
-                result = "5 profiles, 5 routines, 6 contacts seeded",
+                result = "5 profiles, 5 routines, 2 emergency contacts seeded",
                 explanation = "Local synthetic dataset loaded for offline demonstration.",
                 relatedProfileName = "Personal"
             )

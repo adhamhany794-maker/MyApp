@@ -124,7 +124,7 @@ fun ContactsScreen(
     var editingContact by remember { mutableStateOf<PriorityContact?>(null) }
     var isNewContact by remember { mutableStateOf(false) }
     var deletingContact by remember { mutableStateOf<PriorityContact?>(null) }
-    var testContact by remember(state.contacts) { mutableStateOf(state.contacts.firstOrNull()) }
+    var testContact by remember(state.contacts) { mutableStateOf<PriorityContact?>(state.contacts.firstOrNull()) }
     var repeatCaller by remember { mutableStateOf(false) }
     var showTester by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
@@ -211,12 +211,8 @@ fun ContactsScreen(
         }
     }
 
-    val groupedTiers = remember(state.contacts) {
-        listOf(
-            ContactPriority.EMERGENCY to state.contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY },
-            ContactPriority.HIGH_PRIORITY to state.contacts.filter { it.priorityLevel == ContactPriority.HIGH_PRIORITY },
-            ContactPriority.NORMAL to state.contacts.filter { it.priorityLevel == ContactPriority.NORMAL }
-        ).filter { it.second.isNotEmpty() }
+    val emergencyContacts = remember(state.contacts) {
+        state.contacts.filter { it.priorityLevel == ContactPriority.EMERGENCY }
     }
 
     Scaffold(
@@ -388,6 +384,12 @@ fun ContactsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                FilterChip(
+                                    selected = testContact == null,
+                                    onClick = { testContact = null },
+                                    label = { Text(strings.normalCallerAutomaticLabel) },
+                                    modifier = Modifier.testTag("test_normal_caller_chip")
+                                )
                                 state.contacts.forEach { c ->
                                     FilterChip(
                                         selected = testContact?.id == c.id,
@@ -415,9 +417,7 @@ fun ContactsScreen(
                             ) {
                                 Button(
                                     onClick = {
-                                        testContact?.let {
-                                            viewModel.simulateIncomingInterruption(it, InterruptionType.CALL, repeatCaller)
-                                        }
+                                        viewModel.simulateIncomingInterruption(testContact, InterruptionType.CALL, repeatCaller)
                                     },
                                     modifier = Modifier.testTag("test_call_button")
                                 ) {
@@ -427,9 +427,7 @@ fun ContactsScreen(
                                 }
                                 OutlinedButton(
                                     onClick = {
-                                        testContact?.let {
-                                            viewModel.simulateIncomingInterruption(it, InterruptionType.MESSAGE, repeatCaller)
-                                        }
+                                        viewModel.simulateIncomingInterruption(testContact, InterruptionType.MESSAGE, repeatCaller)
                                     },
                                     modifier = Modifier.testTag("test_message_button")
                                 ) {
@@ -470,35 +468,20 @@ fun ContactsScreen(
                 }
             }
 
-            // Grouped Contact Lists by Priority Tier
-            groupedTiers.forEach { (tier, tierContacts) ->
-                val tierTitle = when (tier) {
-                    ContactPriority.EMERGENCY -> strings.emergencyTierTitle
-                    ContactPriority.HIGH_PRIORITY -> strings.highPriorityTierTitle
-                    ContactPriority.NORMAL -> strings.normalTierTitle
-                }
-
-                item(key = "tier_${tier.name}") {
-                    val tierColor = when (tier) {
-                        ContactPriority.EMERGENCY -> StatusCrimson
-                        ContactPriority.HIGH_PRIORITY -> StatusAmber
-                        ContactPriority.NORMAL -> MaterialTheme.colorScheme.secondary
-                    }
+            // Single Emergency Contacts Section (anyone else is normal automatically)
+            if (emergencyContacts.isNotEmpty()) {
+                item(key = "tier_EMERGENCY") {
                     Text(
-                        text = "$tierTitle (${tierContacts.size})".uppercase(),
+                        text = "${strings.emergencyTierTitle} (${emergencyContacts.size})".uppercase(),
                         style = MaterialTheme.typography.labelMedium,
-                        color = tierColor,
+                        color = StatusCrimson,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                 }
 
-                items(tierContacts, key = { it.id }) { contact ->
-                    val tierColor = when (tier) {
-                        ContactPriority.EMERGENCY -> StatusCrimson
-                        ContactPriority.HIGH_PRIORITY -> StatusAmber
-                        ContactPriority.NORMAL -> MaterialTheme.colorScheme.secondary
-                    }
+                items(emergencyContacts, key = { it.id }) { contact ->
+                    val tierColor = StatusCrimson
                     CompanionCard(modifier = Modifier.testTag("contact_card_${contact.id}")) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -543,31 +526,29 @@ fun ContactsScreen(
                                 }
                             )
                         }
-                        if (contact.priorityLevel == ContactPriority.EMERGENCY) {
-                            Spacer(Modifier.height(8.dp))
-                            Surface(
-                                color = StatusEmerald.copy(alpha = 0.14f),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.testTag("emergency_always_badge_${contact.id}")
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            color = StatusEmerald.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("emergency_always_badge_${contact.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.VerifiedUser,
-                                        contentDescription = null,
-                                        tint = StatusEmerald,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = strings.emergencyAlwaysReachesStatus,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = StatusEmerald
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Rounded.VerifiedUser,
+                                    contentDescription = null,
+                                    tint = StatusEmerald,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = strings.emergencyAlwaysReachesStatus,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = StatusEmerald
+                                )
                             }
                         }
                         Spacer(Modifier.height(10.dp))
@@ -744,7 +725,7 @@ fun ContactsScreen(
             onSave = { saved ->
                 editingContact = null
                 missingNumberNotice = null
-                if (saved.priorityLevel == ContactPriority.EMERGENCY && !hasWriteContactsPermission()) {
+                if (!hasWriteContactsPermission()) {
                     pendingManualContactForWritePerm = saved
                     showWriteContactsRationaleDialog = true
                 } else {
@@ -791,7 +772,6 @@ private fun ContactEditorDialog(
     var name by remember { mutableStateOf(initial.name) }
     var phoneNumber by remember { mutableStateOf(initial.phoneNumber) }
     var relationship by remember { mutableStateOf(initial.relationship) }
-    var priority by remember { mutableStateOf(initial.priorityLevel) }
     var interruptions by remember { mutableStateOf(initial.allowedInterruptions.toSet()) }
     var allowRepeat by remember { mutableStateOf(initial.allowRepeatCallers) }
     var errorMsg by remember { mutableStateOf<String?>(initialError) }
@@ -831,16 +811,6 @@ private fun ContactEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(strings.contactPriorityLabel, style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ContactPriority.entries.forEach { level ->
-                        FilterChip(
-                            selected = priority == level,
-                            onClick = { priority = level },
-                            label = { Text(strings.contactPriorityLabel(level)) }
-                        )
-                    }
-                }
                 Text(strings.contactTypesLabel, style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     InterruptionType.entries.forEach { type ->
@@ -893,8 +863,8 @@ private fun ContactEditorDialog(
                     initial.copy(
                         name = name.trim(),
                         initials = initials,
-                        relationship = relationship.trim().ifEmpty { if (strings.isArabic) "جهة اتصال" else "Contact" },
-                        priorityLevel = priority,
+                        relationship = relationship.trim().ifEmpty { if (strings.isArabic) "جهة طوارئ" else "Emergency contact" },
+                        priorityLevel = ContactPriority.EMERGENCY,
                         allowedInterruptions = interruptions.toList(),
                         allowRepeatCallers = allowRepeat,
                         phoneNumber = phoneNumber.trim()

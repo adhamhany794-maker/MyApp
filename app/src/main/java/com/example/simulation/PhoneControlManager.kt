@@ -23,6 +23,7 @@ data class PhoneControlState(
     val isDndEnabled: Boolean = false,
     val currentInterruptionFilter: Int = NotificationManager.INTERRUPTION_FILTER_ALL,
     val starredContactsAllowedInDnd: Boolean = false,
+    val repeatCallersAllowedInDnd: Boolean = false,
     val canScheduleExactAlarms: Boolean = true,
     val hasNotificationListenerAccess: Boolean = false,
     val lastError: String? = null
@@ -40,7 +41,17 @@ interface PhoneControlGateway {
     fun setRingerMode(mode: SoundMode): Boolean
     fun isDndEnabled(): Boolean
     fun isStarredContactsAllowedInDnd(): Boolean
+    fun isRepeatCallersAllowedInDnd(): Boolean = false
     fun setDoNotDisturb(enabled: Boolean, allowStarredContacts: Boolean): Boolean
+    fun setDoNotDisturb(
+        enabled: Boolean,
+        allowStarredContacts: Boolean,
+        allowRepeatCallers: Boolean
+    ): Boolean = setDoNotDisturb(enabled, allowStarredContacts)
+    fun updateDndRepeatCallersPolicy(
+        allowStarredContacts: Boolean,
+        allowRepeatCallers: Boolean
+    ): Boolean = true
     fun createDndAccessSettingsIntent(context: Context): Intent
 
     fun getCurrentInterruptionFilter(): Int =
@@ -165,37 +176,35 @@ class AndroidPhoneControlGateway(
             policy.priorityCallSenders == NotificationManager.Policy.PRIORITY_SENDERS_STARRED
     }
 
+    override fun isRepeatCallersAllowedInDnd(): Boolean {
+        val nm = notificationManager ?: return false
+        if (!nm.isNotificationPolicyAccessGranted) return false
+        val policy = runCatching { nm.notificationPolicy }.getOrNull() ?: return false
+        return (policy.priorityCategories and NotificationManager.Policy.PRIORITY_CATEGORY_REPEAT_CALLERS) != 0
+    }
+
     override fun setDoNotDisturb(enabled: Boolean, allowStarredContacts: Boolean): Boolean {
+        return setDoNotDisturb(
+            enabled = enabled,
+            allowStarredContacts = allowStarredContacts,
+            allowRepeatCallers = false
+        )
+    }
+
+    override fun setDoNotDisturb(
+        enabled: Boolean,
+        allowStarredContacts: Boolean,
+        allowRepeatCallers: Boolean
+    ): Boolean {
         val nm = notificationManager ?: return false
         if (!nm.isNotificationPolicyAccessGranted) return false
         return try {
             if (enabled) {
-                if (allowStarredContacts) {
-                    val existing = runCatching { nm.notificationPolicy }.getOrNull()
-                    var categories = (existing?.priorityCategories ?: 0) or
-                        NotificationManager.Policy.PRIORITY_CATEGORY_CALLS or
-                        NotificationManager.Policy.PRIORITY_CATEGORY_MESSAGES or
-                        NotificationManager.Policy.PRIORITY_CATEGORY_REPEAT_CALLERS or
-                        NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        categories = categories or NotificationManager.Policy.PRIORITY_CATEGORY_CONVERSATIONS
-                    }
-                    val policy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        NotificationManager.Policy(
-                            categories,
-                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
-                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
-                            NotificationManager.Policy.CONVERSATION_SENDERS_IMPORTANT
-                        )
-                    } else {
-                        NotificationManager.Policy(
-                            categories,
-                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED,
-                            NotificationManager.Policy.PRIORITY_SENDERS_STARRED
-                        )
-                    }
-                    runCatching { nm.setNotificationPolicy(policy) }
-                }
+                applyNotificationPolicy(
+                    nm = nm,
+                    allowStarredContacts = allowStarredContacts,
+                    allowRepeatCallers = allowRepeatCallers
+                )
                 nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             } else {
                 nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
@@ -204,6 +213,80 @@ class AndroidPhoneControlGateway(
         } catch (_: SecurityException) {
             false
         }
+    }
+
+    override fun updateDndRepeatCallersPolicy(
+        allowStarredContacts: Boolean,
+        allowRepeatCallers: Boolean
+    ): Boolean {
+        val nm = notificationManager ?: return false
+        if (!nm.isNotificationPolicyAccessGranted) return false
+        return try {
+            applyNotificationPolicy(
+                nm = nm,
+                allowStarredContacts = allowStarredContacts,
+                allowRepeatCallers = allowRepeatCallers
+            )
+            true
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    private fun applyNotificationPolicy(
+        nm: NotificationManager,
+        allowStarredContacts: Boolean,
+        allowRepeatCallers: Boolean
+    ) {
+        val existing = runCatching { nm.notificationPolicy }.getOrNull()
+        var categories = (existing?.priorityCategories ?: 0) or
+            NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS
+        if (allowStarredContacts) {
+            categories = categories or
+                NotificationManager.Policy.PRIORITY_CATEGORY_CALLS or
+                NotificationManager.Policy.PRIORITY_CATEGORY_MESSAGES
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                categories = categories or NotificationManager.Policy.PRIORITY_CATEGORY_CONVERSATIONS
+            }
+        } else {
+            categories = categories and
+                NotificationManager.Policy.PRIORITY_CATEGORY_CALLS.inv() and
+                NotificationManager.Policy.PRIORITY_CATEGORY_MESSAGES.inv()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                categories = categories and NotificationManager.Policy.PRIORITY_CATEGORY_CONVERSATIONS.inv()
+            }
+        }
+        categories = if (allowRepeatCallers) {
+            categories or NotificationManager.Policy.PRIORITY_CATEGORY_REPEAT_CALLERS
+        } else {
+            categories and NotificationManager.Policy.PRIORITY_CATEGORY_REPEAT_CALLERS.inv()
+        }
+
+        val callSenders = if (allowStarredContacts) {
+            NotificationManager.Policy.PRIORITY_SENDERS_STARRED
+        } else {
+            existing?.priorityCallSenders ?: NotificationManager.Policy.PRIORITY_SENDERS_STARRED
+        }
+        val msgSenders = if (allowStarredContacts) {
+            NotificationManager.Policy.PRIORITY_SENDERS_STARRED
+        } else {
+            existing?.priorityMessageSenders ?: NotificationManager.Policy.PRIORITY_SENDERS_STARRED
+        }
+        val policy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            NotificationManager.Policy(
+                categories,
+                callSenders,
+                msgSenders,
+                NotificationManager.Policy.CONVERSATION_SENDERS_IMPORTANT
+            )
+        } else {
+            NotificationManager.Policy(
+                categories,
+                callSenders,
+                msgSenders
+            )
+        }
+        runCatching { nm.setNotificationPolicy(policy) }
     }
 
     override fun createDndAccessSettingsIntent(context: Context): Intent {
@@ -293,7 +376,10 @@ class PhoneControlManager(
         )
     }
 
-    fun toggleDoNotDisturb(allowStarredContacts: Boolean = true): PhoneControlActionResult {
+    fun toggleDoNotDisturb(
+        allowStarredContacts: Boolean = true,
+        allowRepeatCallers: Boolean = false
+    ): PhoneControlActionResult {
         if (!gateway.isNotificationPolicyAccessGranted()) {
             val refreshed = readSnapshot(lastError = "DND_ACCESS_REQUIRED")
             _state.value = refreshed
@@ -306,7 +392,8 @@ class PhoneControlManager(
         val targetEnabled = !gateway.isDndEnabled()
         val applied = gateway.setDoNotDisturb(
             enabled = targetEnabled,
-            allowStarredContacts = allowStarredContacts
+            allowStarredContacts = allowStarredContacts,
+            allowRepeatCallers = allowRepeatCallers
         )
         val refreshed = readSnapshot(
             lastError = if (applied) null else "DND_TOGGLE_FAILED"
@@ -321,7 +408,8 @@ class PhoneControlManager(
 
     fun setDoNotDisturbEnabled(
         enabled: Boolean,
-        allowStarredContacts: Boolean = true
+        allowStarredContacts: Boolean = true,
+        allowRepeatCallers: Boolean = false
     ): PhoneControlActionResult {
         if (!gateway.isNotificationPolicyAccessGranted()) {
             val refreshed = readSnapshot(lastError = "DND_ACCESS_REQUIRED")
@@ -334,11 +422,38 @@ class PhoneControlManager(
         }
         val applied = gateway.setDoNotDisturb(
             enabled = enabled,
-            allowStarredContacts = allowStarredContacts
+            allowStarredContacts = allowStarredContacts,
+            allowRepeatCallers = allowRepeatCallers
         )
         val refreshed = readSnapshot(
             lastError = if (applied) null else "DND_TOGGLE_FAILED"
         )
+        _state.value = refreshed
+        return PhoneControlActionResult(
+            success = applied,
+            permissionRequired = !gateway.isNotificationPolicyAccessGranted(),
+            state = refreshed
+        )
+    }
+
+    fun syncRepeatCallersPolicy(
+        allowStarredContacts: Boolean = true,
+        allowRepeatCallers: Boolean
+    ): PhoneControlActionResult {
+        if (!gateway.isNotificationPolicyAccessGranted()) {
+            val refreshed = readSnapshot(lastError = "DND_ACCESS_REQUIRED")
+            _state.value = refreshed
+            return PhoneControlActionResult(
+                success = false,
+                permissionRequired = true,
+                state = refreshed
+            )
+        }
+        val applied = gateway.updateDndRepeatCallersPolicy(
+            allowStarredContacts = allowStarredContacts,
+            allowRepeatCallers = allowRepeatCallers
+        )
+        val refreshed = readSnapshot(lastError = if (applied) null else "DND_POLICY_FAILED")
         _state.value = refreshed
         return PhoneControlActionResult(
             success = applied,
@@ -410,6 +525,7 @@ class PhoneControlManager(
                 NotificationManager.INTERRUPTION_FILTER_ALL
             },
             starredContactsAllowedInDnd = if (granted) gateway.isStarredContactsAllowedInDnd() else false,
+            repeatCallersAllowedInDnd = if (granted) gateway.isRepeatCallersAllowedInDnd() else false,
             canScheduleExactAlarms = gateway.canScheduleExactAlarms(),
             hasNotificationListenerAccess = gateway.isNotificationListenerAccessGranted(),
             lastError = lastError

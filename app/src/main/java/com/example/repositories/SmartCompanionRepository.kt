@@ -13,6 +13,7 @@ import com.example.models.EventCategory
 import com.example.models.FocusSessionRecord
 import com.example.models.NotificationStat
 import com.example.models.PriorityContact
+import com.example.models.RepeatCallerRule
 import com.example.models.RoutineLogEntry
 import com.example.models.SimulationContextState
 import com.example.models.SmartProfile
@@ -50,6 +51,9 @@ class SmartCompanionRepository(
     val routineLogs: Flow<List<RoutineLogEntry>> =
         db.routineLogDao().observeAll().map { list -> list.map { it.toDomain() } }
 
+    val repeatCallerRules: Flow<List<RepeatCallerRule>> =
+        db.repeatCallerDao().observeAll().map { list -> list.map { it.toDomain() } }
+
     suspend fun getAllRoutinesOnce(): List<SmartRoutine> =
         db.routineDao().getAllOnce().map { it.toDomain() }
 
@@ -61,6 +65,9 @@ class SmartCompanionRepository(
 
     suspend fun getAllContactsOnce(): List<PriorityContact> =
         db.contactDao().getAllOnce().map { it.toDomain() }
+
+    suspend fun getAllRepeatCallerRulesOnce(): List<RepeatCallerRule> =
+        db.repeatCallerDao().getAllOnce().map { it.toDomain() }
 
     suspend fun ensureSeeded() {
         if (db.profileDao().count() == 0) {
@@ -90,6 +97,11 @@ class SmartCompanionRepository(
     suspend fun setDefaultProfileId(profileId: String) = prefs.setDefaultProfileId(profileId)
     suspend fun setConflictPolicy(policy: ConflictResolutionPolicy) = prefs.setConflictPolicy(policy)
     suspend fun setSimulatedContext(ctx: SimulationContextState) = prefs.setSimulatedContext(ctx)
+    suspend fun setRepeatCallsConfig(
+        enabled: Boolean,
+        requiredCalls: Int,
+        windowMinutes: Int
+    ) = prefs.setRepeatCallsConfig(enabled, requiredCalls, windowMinutes)
 
     suspend fun savePhoneState(
         activeProfileId: String,
@@ -131,6 +143,14 @@ class SmartCompanionRepository(
 
     suspend fun deleteContact(contactId: String) {
         db.contactDao().deleteById(contactId)
+    }
+
+    suspend fun upsertRepeatCallerRule(rule: RepeatCallerRule) {
+        db.repeatCallerDao().upsert(rule.toEntity())
+    }
+
+    suspend fun deleteRepeatCallerRule(ruleId: String) {
+        db.repeatCallerDao().deleteById(ruleId)
     }
 
     suspend fun addFocusSession(record: FocusSessionRecord) {
@@ -176,6 +196,7 @@ class SmartCompanionRepository(
         db.profileDao().clearAll()
         db.routineDao().clearAll()
         db.contactDao().clearAll()
+        db.repeatCallerDao().clearAll()
         db.activityEventDao().clearAll()
         db.focusSessionDao().clearAll()
         db.notificationStatDao().clearAll()
